@@ -3,45 +3,69 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\AuthService;
+use App\Http\Requests\LoginRequest;
+use App\Repositories\AuthRepository;
 use App\Traits\ApiResponse;
-use Illuminate\Http\Request;
+use Exception;
+use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
     use ApiResponse;
 
-    protected $authService;
+    protected $authRepo;
 
-    // Masukkan AuthService ke dalam Controller
-    public function __construct(AuthService $authService)
+    public function __construct(AuthRepository $authRepo)
     {
-        $this->authService = $authService;
+        $this->authRepo = $authRepo;
     }
 
-    public function login(Request $request)
+    public function login(LoginRequest $request)
     {
-        // Validasi input
-        $request->validate([
-            'username' => 'required',
-            'password' => 'required',
-        ]);
+        try {
+            $validated = $request->validated();
 
-        // Panggil logika login dari AuthService
-        $result = $this->authService->login($request->username, $request->password);
+            // 1. Cari user di Repository
+            $user = $this->authRepo->findByUsername($validated['username']);
 
-        if (!$result) {
-            return $this->errorResponse('Username atau password salah', 401);
+            // 2. Cek apakah user ada dan password cocok
+            if (!$user || !Hash::check($validated['password'], $user->password)) {
+                return $this->errorResponse("Username atau password salah", 401);
+            }
+
+            // 3. Cek apakah status user aktif
+            if ($user->status !== 'aktif') {
+                return $this->errorResponse("Akun anda dinonaktifkan. Silakan hubungi admin.", 403);
+            }
+
+            // 4. Buat Token Sanctum
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return $this->successResponse([
+                'user' => $user,
+                'token' => $token,
+                'token_type' => 'Bearer'
+            ], "Login Berhasil");
+        } catch (Exception $e) {
+            return $this->errorResponse($e->getMessage());
         }
-
-        return $this->successResponse($result, 'Login Berhasil');
     }
 
-    public function logout(Request $request)
+    // Tambahkan Request $request di dalam kurung
+    public function logout(\Illuminate\Http\Request $request)
     {
-        // Menghapus token yang sedang digunakan
-        $request->user()->currentAccessToken()->delete();
+        try {
+            $user = $request->user();
 
-        return $this->successResponse(null, 'Logout Berhasil');
+            // Cek dulu apakah usernya ada dan punya token aktif
+            if ($user && $user->currentAccessToken()) {
+                // Kita panggil delete() secara aman
+                $user->currentAccessToken()->delete();
+            }
+
+            return $this->successResponse(null, "Logout Berhasil");
+        } catch (Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
     }
 }

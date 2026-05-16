@@ -21,4 +21,13 @@ trait ApiResponse
             'data' => null
         ], $code);
     }
+
+    protected function unauthorizedResponse($message = "Unauthorized", $code = 401)
+    {
+        return response()->json([
+            'status' => 'error',
+            'message' => $message,
+            'data' => null
+        ], $code);
+    }
 }

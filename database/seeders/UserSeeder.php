@@ -25,5 +25,14 @@ class UserSeeder extends Seeder
             'noTelepon' => '08123456711',
             'alamat' => 'taltim',
         ]);
+
+        \App\Models\User::create([
+            'username' => 'warga1', 
+            'password' => bcrypt('password'), 
+            'role' => 'pelanggan', 
+            'namaLengkap' => 'Bapak Ahmad', 
+            'noTelepon' => '08123456712', 
+            'alamat' => 'talbar'
+        ]);
     }
 }
