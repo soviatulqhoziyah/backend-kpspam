@@ -4,48 +4,55 @@ namespace App\Repositories;
 
 use App\Models\Payment;
 use App\Models\Billing;
-use Illuminate\Support\Facades\DB;
+use Midtrans\Snap;
+use Midtrans\Config;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 
 class PaymentRepository
 {
-
     protected $model;
 
     public function __construct(Payment $model)
     {
         $this->model = $model;
+        // Konfigurasi Midtrans dari .env
+        Config::$serverKey = env('MIDTRANS_SERVER_KEY');
+        Config::$isProduction = env('MIDTRANS_IS_PRODUCTION');
+        Config::$isSanitized = true;
+        Config::$is3ds = true;
     }
 
-    public function processPayment($data)
+    public function initiateMidtrans($data)
     {
-        return DB::transaction(function () use ($data) {
-            $billing = Billing::findOrFail($data['billing_id']);
+        $billings = Billing::whereIn('id', $data['billing_ids'])->get();
+        $totalAmount = $billings->sum('totalTagihan');
+        $orderId = 'INV-' . time() . '-' . Auth::id();
 
-            if ($billing->status === 'lunas') {
-                throw new Exception("Tagihan periode ini sudah lunas.");
-            }
+        // SIMPAN order_id ke semua billing yang dipilih
+        foreach ($billings as $bill) {
+            $bill->update(['midtrans_order_id' => $orderId]);
+        }
 
-            if ($data['nominalPembayaran'] < $billing->totalTagihan) {
-                throw new Exception("Uang tidak cukup. Total tagihan: " . $billing->totalTagihan);
-            }
+        $params = [
+            'transaction_details' => [
+                'order_id' => $orderId,
+                'gross_amount' => (int) $totalAmount,
+            ],
+            'customer_details' => [
+                'first_name' => Auth::user()->namaLengkap,
+                'phone' => Auth::user()->noTelepon,
+            ],
+            'enabled_payments' => ['qris', 'gopay', 'shopeepay', 'other_va']
+        ];
 
-            // Update status tagihan
-            $billing->update(['status' => 'lunas']);
+        $snapToken = \Midtrans\Snap::getSnapToken($params);
 
-            // Ambil info siapa yang memproses
-            $processor = Auth::id();
-
-            return $this->model->create([
-                'billing_id' => $data['billing_id'],
-                'user_id' => $processor, // Menyimpan siapa yang menekan tombol "Bayar"
-                'metodePembayaran' => $data['metodePembayaran'],
-                'nominalPembayaran' => $data['nominalPembayaran'],
-                'tanggalBayar' => now(),
-                // Tip: Kamu bisa tambah kolom 'keterangan' di migration jika ingin 
-                // mencatat misal: "Dikonfirmasi oleh petugas" atau "Bayar Mandiri"
-            ]);
-        });
+        return [
+            'redirect_url' => "https://app.sandbox.midtrans.com/snap/v2/vtweb/" . $snapToken,
+            'snap_token' => $snapToken,
+            'order_id' => $orderId,
+            'total_bayar' => $totalAmount
+        ];
     }
 }

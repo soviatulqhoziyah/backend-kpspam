@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Repositories\UserRepository;
 use App\Http\Requests\UserRequest;
+use App\Repositories\UserRepository;
 use App\Traits\ApiResponse;
 use Exception;
+use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\Request;
 
 class UserController extends Controller
 {
@@ -19,11 +21,15 @@ class UserController extends Controller
         $this->userRepo = $userRepo;
     }
 
-    public function index()
+    public function index(Request $request)
     {
         try {
-            $users = $this->userRepo->getAllUsers();
-            return $this->successResponse($users, "Daftar user berhasil diambil");
+            if (Auth::user()->role !== 'admin') {
+                return $this->unauthorizedResponse("Hanya admin yang dapat mengelola data user.");
+            }
+
+            $data = $this->userRepo->getPaginatedUsers($request);
+            return $this->successResponse($data, "Daftar user berhasil dimuat");
         } catch (Exception $e) {
             return $this->errorResponse($e->getMessage());
         }
@@ -59,6 +65,4 @@ class UserController extends Controller
             return $this->errorResponse($e->getMessage());
         }
     }
-
-    
 }

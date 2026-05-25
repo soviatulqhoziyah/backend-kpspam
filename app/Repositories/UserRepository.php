@@ -2,113 +2,90 @@
 
 namespace App\Repositories;
 
-use App\Models\Billing;
-use App\Models\Expense;
-use App\Models\Payment;
 use App\Models\User;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Auth;
 
-class UserRepository {
+class UserRepository
+{
 
     protected $model;
 
-    public function __construct(User $model) {
+    public function __construct(User $model)
+    {
         $this->model = $model;
     }
 
-    public function getAllUsers() {
-        return $this->model->latest()->get();
-    }
+    public function getPaginatedUsers($request)
+    {
+        // 1. Buat Query Dasar
+        $query = $this->model->query();
 
-    public function storeUser($data) {
+        // 2. LOGIKA FILTER ROLE (Petugas / Pelanggan)
+        // Jika di URL ada ?role=petugas, maka filter role-nya
+        if ($request->has('role') && $request->role != 'Semua') {
+            $query->where('role', $request->role);
+        }
+
+        // 3. LOGIKA CARI NAMA (Search)
+        // Jika di URL ada ?search=Budi, maka cari di kolom namaLengkap atau username
+        if ($request->has('search')) {
+            $query->where(function ($q) use ($request) {
+                $q->where('namaLengkap', 'like', '%' . $request->search . '%')
+                    ->orWhere('username', 'like', '%' . $request->search . '%');
+            });
+        }
+
+        // 4. Hitung Summary (Statistik di atas kartu UI)
+        // Kita hitung total SEBELUM di-paginate
+        $summary = [
+            'total_pengguna' => $this->model->count(),
+            'petugas_aktif' => $this->model->where('role', 'petugas')->where('status', 'aktif')->count(),
+            'pelanggan_aktif' => $this->model->where('role', 'pelanggan')->where('status', 'aktif')->count(),
+        ];
+
+        // 5. Eksekusi Pagination (10 data per halaman)
+        $users = $query->latest()->paginate(10);
+
+        // 6. Mapping format ID agar cantik di UI (PLG-001 atau USR-001)
+        $users->getCollection()->transform(function ($user) {
+            $prefix = ($user->role === 'pelanggan') ? 'PLG-' : 'USR-';
+            return [
+                'id' => $user->id,
+                'id_display' => $prefix . str_pad($user->id, 3, '0', STR_PAD_LEFT),
+                'namaLengkap' => $user->namaLengkap,
+                'username' => $user->username,
+                'role' => $user->role,
+                'noTelepon' => $user->noTelepon,
+                'alamat' => $user->alamat,
+                'status' => strtoupper($user->status),
+            ];
+        });
+
+        return [
+            'summary' => $summary,
+            'list' => $users
+        ];
+    }
+    public function storeUser($data)
+    {
         $data['password'] = Hash::make($data['password']);
         return $this->model->create($data);
     }
 
-    public function updateUser($id, $data) {
+    public function updateUser($id, $data)
+    {
         $user = $this->model->findOrFail($id);
-        
-        // Jika password diisi, maka hash. Jika kosong, hapus dari array agar tidak terupdate jadi kosong
         if (!empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);
         } else {
             unset($data['password']);
         }
-
         $user->update($data);
         return $user;
     }
 
-    public function deleteUser($id) {
-        $user = $this->model->findOrFail($id);
-        return $user->delete();
-    }
-}
-
-class PetugasRepository {
-
-    public function getDashboardData($petugasId)
+    public function deleteUser($id)
     {
-        // Set locale ke Indonesia untuk nama bulan
-        Carbon::setLocale('id');
-        $currentMonth = Carbon::now()->translatedFormat('F Y'); 
-        
-        // 1. Hitung Target Pelanggan (Hanya role 'pelanggan' DAN status 'aktif')
-        $totalPelangganAktif = User::where('role', 'pelanggan')
-                                   ->where('status', 'aktif') 
-                                   ->count();
-
-        // 2. Hitung Rumah Dikunjungi (Berapa banyak billing yang dibuat bulan ini)
-        // Kita asumsikan 1 billing = 1 kunjungan sukses
-        $rumahDikunjungi = Billing::where('periode', $currentMonth)->count();
-        
-        $sisaKunjungan = $totalPelangganAktif - $rumahDikunjungi;
-        
-        // Jaga agar sisa kunjungan tidak minus jika ada data lama
-        $sisaKunjungan = $sisaKunjungan < 0 ? 0 : $sisaKunjungan;
-
-        // Hitung Persentase Progres
-        $progres = $totalPelangganAktif > 0 ? round(($rumahDikunjungi / $totalPelangganAktif) * 100) : 0;
-
-        // 3. Hitung Keuangan (Pemasukan yang dikumpulkan petugas ini di bulan berjalan)
-        $pemasukanTunai = Payment::where('user_id', $petugasId)
-            ->where('metodePembayaran', 'tunai')
-            ->whereMonth('tanggalBayar', Carbon::now()->month)
-            ->whereYear('tanggalBayar', Carbon::now()->year)
-            ->sum('nominalPembayaran');
-
-        $pemasukanNonTunai = Payment::where('user_id', $petugasId)
-            ->where('metodePembayaran', 'non_tunai')
-            ->whereMonth('tanggalBayar', Carbon::now()->month)
-            ->whereYear('tanggalBayar', Carbon::now()->year)
-            ->sum('nominalPembayaran');
-
-        $totalSaldo = $pemasukanTunai + $pemasukanNonTunai;
-
-        // 4. Hitung Pengeluaran Petugas ini (hanya yang sudah approve)
-        $totalPengeluaran = Expense::where('user_id', $petugasId)
-            ->where('status', 'approve')
-            ->whereMonth('tanggalPengeluaran', Carbon::now()->month)
-            ->whereYear('tanggalPengeluaran', Carbon::now()->year)
-            ->sum('nominal');
-
-        return [
-            'nama_petugas' => Auth::user()->namaLengkap,
-            'periode' => $currentMonth,
-            'statistik' => [
-                'total_target' => $totalPelangganAktif,
-                'rumah_dikunjungi' => $rumahDikunjungi,
-                'sisa_kunjungan' => $sisaKunjungan,
-                'progres_persen' => $progres,
-            ],
-            'keuangan' => [
-                'total_saldo' => (float) $totalSaldo,
-                'tunai' => (float) $pemasukanTunai,
-                'non_tunai' => (float) $pemasukanNonTunai,
-            ],
-            'pengeluaran_bulan_ini' => (float) $totalPengeluaran
-        ];
+        return $this->model->findOrFail($id)->delete();
     }
 }

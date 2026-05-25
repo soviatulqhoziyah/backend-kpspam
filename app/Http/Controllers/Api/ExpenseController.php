@@ -24,7 +24,7 @@ class ExpenseController extends Controller
     public function index()
     {
         try {
-            $data = $this->expenseRepo->getAll();
+            $data = $this->expenseRepo->getPetugasSummary(Auth::id());
             return $this->successResponse($data, "Data pengeluaran berhasil diambil");
         } catch (Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -45,7 +45,7 @@ class ExpenseController extends Controller
 
             $expense = $this->expenseRepo->store($validated, $file);
 
-            return $this->successResponse($expense, "Pengeluaran berhasil dicatat, menunggu persetujuan admin", 201);
+            return $this->successResponse($expense, "Pengeluaran berhasil dicatat, menunggu persetujuan admin", 200);
         } catch (Exception $e) {
             return $this->errorResponse($e->getMessage());
         }

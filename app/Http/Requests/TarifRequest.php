@@ -1,17 +1,18 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Api;
 
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class PaymentRequest extends FormRequest
+class TarifRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
     {
-        return true;
+        return false;
     }
 
     /**
@@ -22,10 +23,9 @@ class PaymentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'billing_ids' => 'required|array',
-            'billing_ids.*' => 'exists:billings,id',
-            'metodePembayaran' => 'required|in:tunai,non_tunai',
-            'nominalPembayaran' => 'required|numeric|min:0',
+            'hargaPerM' => 'required|numeric|min:0',
+            'biayaBeban' => 'required|numeric|min:0',
+            'status' => 'required|in:aktif,tidak aktif',
         ];
     }
 }
