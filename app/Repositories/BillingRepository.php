@@ -30,7 +30,13 @@ class BillingRepository
 
             // 2. Konversi Periode ke Objek Carbon (Memastikan format benar)
             try {
-                $inputDate = Carbon::parse($data['periode']);
+                $englishMonths = [
+                    'Januari' => 'January', 'Februari' => 'February', 'Maret' => 'March',
+                    'Mei' => 'May', 'Juni' => 'June', 'Juli' => 'July',
+                    'Agustus' => 'August', 'Oktober' => 'October', 'Desember' => 'December'
+                ];
+                $englishPeriode = strtr($data['periode'], $englishMonths);
+                $inputDate = Carbon::parse($englishPeriode);
             } catch (Exception $e) {
                 throw new Exception("Format periode tidak valid. Gunakan format 'Bulan Tahun' (Contoh: Mei 2026).");
             }
@@ -38,6 +44,7 @@ class BillingRepository
 
             // LOGIKA KETAT: Cek apakah Bulan & Tahun yang diinput sama dengan Bulan & Tahun saat ini
             if ($inputDate->format('m-Y') !== $now->format('m-Y')) {
+                Carbon::setLocale('id');
                 throw new Exception("Gagal: Anda hanya diperbolehkan menginput tagihan untuk bulan " . $now->translatedFormat('F Y'));
             }
 

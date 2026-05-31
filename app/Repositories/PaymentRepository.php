@@ -42,9 +42,11 @@ class PaymentRepository
             'customer_details' => [
                 'first_name' => Auth::user()->namaLengkap,
                 'phone' => Auth::user()->noTelepon,
-            ],
-            'enabled_payments' => ['qris', 'gopay', 'shopeepay', 'other_va']
+            ]
         ];
+
+        // Semua metode pembayaran akan ditampilkan oleh Midtrans
+        // (Tidak ada filter enabled_payments agar tidak terjadi error 'No payment channels available')
 
         $snapToken = \Midtrans\Snap::getSnapToken($params);
 
@@ -54,5 +56,68 @@ class PaymentRepository
             'order_id' => $orderId,
             'total_bayar' => $totalAmount
         ];
+    }
+
+    public function processCashPayment($data)
+    {
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($data) {
+            $billings = Billing::whereIn('id', $data['billing_ids'])->get();
+            $totalAmount = $billings->sum('totalTagihan');
+
+            if (empty($billings)) {
+                throw new Exception("Tagihan tidak ditemukan.");
+            }
+
+            // 1. Ubah status semua tagihan menjadi lunas
+            $payments = [];
+            foreach ($billings as $bill) {
+                if ($bill->status !== 'lunas') {
+                    $bill->update(['status' => 'lunas']);
+
+                    // 2. Buat record Payment per tagihan karena skema mewajibkan 'billing_id'
+                    $payments[] = $this->model->create([
+                        'billing_id' => $bill->id,
+                        'user_id' => Auth::id(), // Petugas yang memproses pembayaran
+                        'nominalPembayaran' => $bill->totalTagihan,
+                        'metodePembayaran' => 'tunai',
+                        'tanggalBayar' => now()
+                    ]);
+                }
+            }
+
+            return ['payments' => $payments];
+        });
+    }
+
+    public function syncMidtrans($orderId)
+    {
+        /** @var mixed $statusResponse */
+        $statusResponse = \Midtrans\Transaction::status($orderId);
+        $transactionStatus = $statusResponse->transaction_status;
+
+        if ($transactionStatus == 'settlement' || $transactionStatus == 'capture') {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($orderId) {
+                $billings = Billing::where('midtrans_order_id', $orderId)->get();
+                $processed = false;
+
+                foreach ($billings as $bill) {
+                    if ($bill->status !== 'lunas') {
+                        $bill->update(['status' => 'lunas']);
+
+                        $this->model->create([
+                            'billing_id' => $bill->id,
+                            'user_id' => $bill->user_id,
+                            'metodePembayaran' => 'non_tunai',
+                            'nominalPembayaran' => $bill->totalTagihan,
+                            'tanggalBayar' => now()
+                        ]);
+                        $processed = true;
+                    }
+                }
+                return $processed;
+            });
+        }
+        
+        return false;
     }
 }

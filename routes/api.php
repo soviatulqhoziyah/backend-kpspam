@@ -44,6 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/customers/{id}', [PetugasDashboardController::class, 'showCustomer']); //detail pelanggan
         Route::post('/billing-input', [BillingController::class, 'store']); //input tagihan
         Route::post('/payments', [PaymentController::class, 'store']); //proses pembayaran
+        Route::post('/payments/sync', [PaymentController::class, 'syncMidtrans']); //sinkronisasi pembayaran non tunai
         Route::get('/expenses', [ExpenseController::class, 'index']); //pengeluaran
         Route::post('/expenses', [ExpenseController::class, 'store']); //catat pengeluaran
         Route::put('/expenses/{id}/status', [ExpenseController::class, 'updateStatus']); // Khusus Admin
@@ -58,6 +59,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/complaints', [ComplaintController::class, 'store']);
         Route::get('/profile', [PelangganController::class, 'profile']);
         Route::post('/payments/checkout', [PaymentController::class, 'checkout']);
+        Route::post('/payments/sync', [PaymentController::class, 'syncMidtrans']);
     });
 
     // Dashboard Admin (Web)

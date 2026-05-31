@@ -13,6 +13,15 @@ trait ApiResponse
         ], $code);
     }
 
+    protected function createdResponse($data, $message = "Data Berhasil Dibuat")
+    {
+        return response()->json([
+            'status' => 'success',
+            'message' => $message,
+            'data' => $data
+        ], 201);
+    }
+
     protected function errorResponse($message = "Terjadi Kesalahan", $code = 400)
     {
         return response()->json([

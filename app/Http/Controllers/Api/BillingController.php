@@ -30,7 +30,16 @@ class BillingController extends Controller
             // 3. Panggil Repository (Kirim data valid + file foto)
             $billing = $this->billingRepo->storeBilling($validated, $file);
 
-            return $this->successResponse($billing, "Tagihan berhasil diterbitkan");
+            // 4. Ambil SEMUA tagihan yang masih menunggak untuk user tersebut
+            $unpaidBillings = \App\Models\Billing::where('user_id', $validated['user_id'])
+                                              ->where('status', 'menunggak')
+                                              ->orderBy('periode', 'asc') // Urutkan dari tagihan terlama
+                                              ->get();
+
+            return $this->createdResponse([
+                'new_billing' => $billing,
+                'unpaid_billings' => $unpaidBillings
+            ], "Tagihan berhasil diterbitkan");
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
         }

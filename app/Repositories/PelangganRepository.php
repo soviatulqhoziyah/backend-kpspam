@@ -26,7 +26,7 @@ class PelangganRepository
 
             // Hitung selisih hari jika sudah melewati jatuh tempo
             $isOverdue = $now->greaterThan($dueDate);
-            $daysOverdue = $isOverdue ? $now->diffInDays($dueDate) : 0;
+            $daysOverdue = $isOverdue ? intval($dueDate->diffInDays($now)) : 0;
 
             return [
                 'id' => $bill->id,

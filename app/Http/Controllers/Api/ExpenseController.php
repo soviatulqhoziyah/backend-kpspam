@@ -45,7 +45,7 @@ class ExpenseController extends Controller
 
             $expense = $this->expenseRepo->store($validated, $file);
 
-            return $this->successResponse($expense, "Pengeluaran berhasil dicatat, menunggu persetujuan admin", 200);
+            return $this->createdResponse($expense, "Pengeluaran berhasil dicatat, menunggu persetujuan admin");
         } catch (Exception $e) {
             return $this->errorResponse($e->getMessage());
         }

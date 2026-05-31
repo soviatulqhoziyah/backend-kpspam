@@ -50,8 +50,9 @@ class ExpenseRepository
 
         return [
             'summary' => [
-                'total_pengeluaran_maret' => (float) $totalApprove,
-                'jumlah_transaksi' => $totalTransaksiCount . " Transaksi",
+                'total_pengeluaran_bulan_ini' => (float) $totalApprove,
+                'jumlah_transaksi' => $totalTransaksiCount, // Kirim angka asli saja agar lebih fleksibel di frontend
+                'nama_bulan' => strtoupper($now->translatedFormat('F')), // contoh: "MEI"
                 'bulan_saat_ini' => $now->translatedFormat('F Y')
             ],
             'riwayat' => $listData

@@ -95,7 +95,6 @@ class PetugasRepository
                 ->exists();
 
             $lastMeterRecord = Billing::where('user_id', $user->id)
-                ->where('periode', '!=', $currentMonth)
                 ->orderBy('id', 'desc')
                 ->first();
 
@@ -144,6 +143,12 @@ class PetugasRepository
         // 1. Cari user berdasarkan ID
         $user = User::where('role', 'pelanggan')->findOrFail($id);
 
+        // Cari meteran terakhir
+        $lastMeterRecord = Billing::where('user_id', $id)
+            ->orderBy('id', 'desc')
+            ->first();
+        $meterTerakhir = $lastMeterRecord ? $lastMeterRecord->meteranSekarang : 0;
+
         // 2. Ambil semua tagihan yang statusnya 'menunggak'
         $tunggakan = Billing::where('user_id', $id)
             ->where('status', 'menunggak')
@@ -172,6 +177,7 @@ class PetugasRepository
                 'id_pelanggan' => $user->username, // Menggunakan username sebagai nomor ID di kartu
                 'status' => strtoupper($user->status),
                 'alamat' => $user->alamat == 'talbar' ? 'Jorong Talang Barat' : 'Jorong Talang Timur',
+                'meter_terakhir' => $meterTerakhir,
             ],
             'tunggakan_info' => [
                 'jumlah_bulan' => $tunggakan->count() . ' Bulan Menunggak',
@@ -184,7 +190,7 @@ class PetugasRepository
     public function getProfileData($petugasId)
     {
         $user = User::findOrFail($petugasId);
-        $totalTugas = Payment::where('user_id', $petugasId)->count();
+        $totalTugas = Payment::count();
 
         return [
             // Jika foto kosong, berikan foto default (UI tetap cantik)

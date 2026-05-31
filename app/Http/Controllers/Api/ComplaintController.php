@@ -41,7 +41,7 @@ class ComplaintController extends Controller {
             $file = $request->file('fotoBukti');
             
             $complaint = $this->complaintRepo->store($validated, $file);
-            return $this->successResponse($complaint, "Pengaduan berhasil terkirim", 200);
+            return $this->createdResponse($complaint, "Pengaduan berhasil terkirim");
         } catch (Exception $e) {
             return $this->errorResponse($e->getMessage());
         }

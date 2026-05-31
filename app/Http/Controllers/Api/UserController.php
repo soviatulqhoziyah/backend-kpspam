@@ -40,7 +40,7 @@ class UserController extends Controller
         try {
             $validated = $request->validated();
             $user = $this->userRepo->storeUser($validated);
-            return $this->successResponse($user, "User berhasil dibuat", 200);
+            return $this->createdResponse($user, "User berhasil dibuat");
         } catch (Exception $e) {
             return $this->errorResponse($e->getMessage());
         }

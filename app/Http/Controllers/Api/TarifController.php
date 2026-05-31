@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\TarifRequest;
+use App\Http\Requests\TarifRequest;
 use App\Repositories\TarifRepository;
 use App\Traits\ApiResponse;
 use Exception;
@@ -29,7 +29,7 @@ class TarifController extends Controller {
     public function store(TarifRequest $request) {
         try {
             $tarif = $this->tarifRepo->store($request->validated());
-            return $this->successResponse($tarif, "Tarif baru berhasil ditambahkan", 201);
+            return $this->createdResponse($tarif, "Tarif baru berhasil ditambahkan");
         } catch (Exception $e) {
             return $this->errorResponse($e->getMessage());
         }
