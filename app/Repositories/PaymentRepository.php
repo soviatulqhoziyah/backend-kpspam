@@ -25,7 +25,7 @@ class PaymentRepository
 
     public function initiateMidtrans($data)
     {
-        $billings = Billing::whereIn('id', $data['billing_ids'])->get();
+        $billings = Billing::whereIn('id', $data['billing_ids'])->where('status', '!=', 'lunas')->get();
         $totalAmount = $billings->sum('totalTagihan');
         $orderId = 'INV-' . time() . '-' . Auth::id();
 
@@ -61,7 +61,7 @@ class PaymentRepository
     public function processCashPayment($data)
     {
         return \Illuminate\Support\Facades\DB::transaction(function () use ($data) {
-            $billings = Billing::whereIn('id', $data['billing_ids'])->get();
+            $billings = Billing::whereIn('id', $data['billing_ids'])->where('status', '!=', 'lunas')->get();
             $totalAmount = $billings->sum('totalTagihan');
 
             if (empty($billings)) {

@@ -34,11 +34,13 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Pengaduan
-    Route::get('/complaints', [ComplaintController::class, 'index']);
-    Route::put('/complaints/{id}/status', [ComplaintController::class, 'updateStatus']); // Khusus Admin 
+    Route::middleware('role:admin')->group(function () {
+        Route::get('/complaints', [ComplaintController::class, 'index']);
+        Route::put('/complaints/{id}/status', [ComplaintController::class, 'updateStatus']); // Khusus Admin 
+    });
 
     // Endpoint khusus dashboard petugas
-    Route::prefix('petugas')->group(function () {
+    Route::prefix('petugas')->middleware('role:petugas')->group(function () {
         Route::get('/dashboard', [PetugasDashboardController::class, 'index']); //beranda
         Route::get('/customers', [PetugasDashboardController::class, 'getCustomers']); //daftar pelanggan
         Route::get('/customers/{id}', [PetugasDashboardController::class, 'showCustomer']); //detail pelanggan
@@ -52,7 +54,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Endpoint khusus pelanggan
-    Route::prefix('pelanggan')->group(function () {
+    Route::prefix('pelanggan')->middleware('role:pelanggan')->group(function () {
         Route::get('/dashboard', [PelangganController::class, 'index']);
         Route::get('/history', [PelangganController::class, 'history']);
         Route::get('/complaints', [PelangganController::class, 'myComplaints']);
@@ -63,7 +65,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Dashboard Admin (Web)
-    Route::prefix('admin')->group(function () {
+    Route::prefix('admin')->middleware('role:admin')->group(function () {
         Route::get('/dashboard-summary', [AdminDashboardController::class, 'index']);
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);
