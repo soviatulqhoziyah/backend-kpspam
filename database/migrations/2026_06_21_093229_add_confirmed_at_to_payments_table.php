@@ -11,18 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('complaints', function (Blueprint $table) {
-            $table->string('kategori', 50)->nullable()->after('user_id');
+        Schema::table('payments', function (Blueprint $table) {
+            $table->timestamp('confirmed_at')->nullable()->after('is_confirmed');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('complaints', function (Blueprint $table) {
-            $table->dropColumn('kategori');
+        Schema::table('payments', function (Blueprint $table) {
+            $table->dropColumn('confirmed_at');
         });
     }
 };

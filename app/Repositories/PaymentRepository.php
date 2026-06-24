@@ -23,9 +23,21 @@ class PaymentRepository
         Config::$is3ds = true;
     }
 
-    public function initiateMidtrans($data)
+    public function initiateMidtrans($data, bool $skipUserCheck = false)
     {
-        $billings = Billing::whereIn('id', $data['billing_ids'])->where('status', '!=', 'lunas')->get();
+        $query = Billing::whereIn('id', $data['billing_ids'])
+            ->where('status', '!=', 'lunas');
+
+        if (!$skipUserCheck) {
+            $query->where('user_id', Auth::id());
+        }
+
+        $billings = $query->get();
+
+        if ($billings->isEmpty()) {
+            throw new Exception("Tagihan tidak ditemukan atau sudah lunas.");
+        }
+
         $totalAmount = $billings->sum('totalTagihan');
         $orderId = 'INV-' . time() . '-' . Auth::id();
 
@@ -50,8 +62,13 @@ class PaymentRepository
 
         $snapToken = \Midtrans\Snap::getSnapToken($params);
 
+        $isProduction = (bool) env('MIDTRANS_IS_PRODUCTION', false);
+        $snapBaseUrl = $isProduction
+            ? 'https://app.midtrans.com/snap/v2/vtweb/'
+            : 'https://app.sandbox.midtrans.com/snap/v2/vtweb/';
+
         return [
-            'redirect_url' => "https://app.sandbox.midtrans.com/snap/v2/vtweb/" . $snapToken,
+            'redirect_url' => $snapBaseUrl . $snapToken,
             'snap_token' => $snapToken,
             'order_id' => $orderId,
             'total_bayar' => $totalAmount

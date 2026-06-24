@@ -22,13 +22,13 @@ class UserRepository
 
         // 2. LOGIKA FILTER ROLE (Petugas / Pelanggan)
         // Jika di URL ada ?role=petugas, maka filter role-nya
-        if ($request->has('role') && $request->role != 'Semua') {
+        if ($request->filled('role')) {
             $query->where('role', $request->role);
         }
 
         // 3. LOGIKA CARI NAMA (Search)
         // Jika di URL ada ?search=Budi, maka cari di kolom namaLengkap atau username
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $query->where(function ($q) use ($request) {
                 $q->where('namaLengkap', 'like', '%' . $request->search . '%')
                     ->orWhere('username', 'like', '%' . $request->search . '%');
@@ -39,8 +39,8 @@ class UserRepository
         // Kita hitung total SEBELUM di-paginate
         $summary = [
             'total_pengguna' => $this->model->count(),
-            'petugas_aktif' => $this->model->where('role', 'petugas')->where('status', 'aktif')->count(),
-            'pelanggan_aktif' => $this->model->where('role', 'pelanggan')->where('status', 'aktif')->count(),
+            'aktif' => $this->model->where('status', 'aktif')->count(),
+            'non_aktif' => $this->model->where('status', 'non_aktif')->count(),
         ];
 
         // 5. Eksekusi Pagination (10 data per halaman)
@@ -58,6 +58,7 @@ class UserRepository
                 'noTelepon' => $user->noTelepon,
                 'alamat' => $user->alamat,
                 'status' => strtoupper($user->status),
+                'meteranAwal' => (int) ($user->meteranAwal ?? 0),
             ];
         });
 

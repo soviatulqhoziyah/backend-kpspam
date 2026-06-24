@@ -27,8 +27,9 @@ class ComplaintRepository {
         $path = $file->store('bukti_pengaduan', 'public');
 
         return $this->model->create([
-            'user_id'   => Auth::id(), // Otomatis ambil ID yang sedang login
+            'user_id'   => Auth::id(),
             'deskripsi' => $data['deskripsi'],
+            'kategori'  => $data['kategori'] ?? null,
             'fotoBukti' => $path,
             'status'    => 'belumProses'
         ]);

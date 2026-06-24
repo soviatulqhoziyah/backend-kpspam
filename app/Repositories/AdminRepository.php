@@ -47,25 +47,85 @@ class AdminRepository
         $year = (int) $year;
 
         $pemasukanKotor = Payment::whereMonth('tanggalBayar', $month)->whereYear('tanggalBayar', $year)->sum('nominalPembayaran');
-        $pemasukanPiutang = Billing::where('status', 'menunggak')->sum('totalTagihan');
+
+        // Piutang terbayar: tagihan bulan SEBELUMNYA yang baru dibayar bulan ini
+        $pemasukanPiutang = Payment::whereMonth('tanggalBayar', $month)
+            ->whereYear('tanggalBayar', $year)
+            ->whereHas('billing', function ($q) use ($month, $year) {
+                $q->where(function ($inner) use ($month, $year) {
+                    $inner->whereYear('created_at', '<', $year)
+                        ->orWhere(function ($q2) use ($month, $year) {
+                            $q2->whereYear('created_at', $year)
+                               ->whereMonth('created_at', '<', $month);
+                        });
+                });
+            })
+            ->sum('nominalPembayaran');
+
+        // Tagihan tertunda: tagihan bulan ini yang belum lunas
+        $tagihanTertunda = Billing::where('status', '!=', 'lunas')
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year)
+            ->sum('totalTagihan');
         $pengeluaranKotor = Expense::where('status', 'approve')->whereMonth('tanggalPengeluaran', $month)->whereYear('tanggalPengeluaran', $year)->sum('nominal');
         $pemasukanNonTunai = Payment::where('metodePembayaran', 'non_tunai')->whereMonth('tanggalBayar', $month)->whereYear('tanggalBayar', $year)->sum('nominalPembayaran');
         $pemasukanTunai = Payment::where('metodePembayaran', 'tunai')->whereMonth('tanggalBayar', $month)->whereYear('tanggalBayar', $year)->sum('nominalPembayaran');
 
+        // Pengeluaran yang sudah di-approve per petugas bulan ini (dikurangi dari setoran)
+        $approvedExpensesByPetugas = Expense::where('status', 'approve')
+            ->whereMonth('tanggalPengeluaran', $month)
+            ->whereYear('tanggalPengeluaran', $year)
+            ->select('user_id', DB::raw('SUM(nominal) as total_expense'))
+            ->groupBy('user_id')
+            ->pluck('total_expense', 'user_id');
+
         $setoranPetugas = Payment::with('user')
             ->where('metodePembayaran', 'tunai')
             ->where('is_confirmed', 0)
+            ->whereMonth('tanggalBayar', $month)
+            ->whereYear('tanggalBayar', $year)
             ->select('user_id', DB::raw('SUM(nominalPembayaran) as total_tunai'))
             ->groupBy('user_id')
             ->get()
-            ->map(function ($item) {
+            ->map(function ($item) use ($approvedExpensesByPetugas) {
+                $totalTunai = (float) $item->total_tunai;
+                $totalPengeluaran = (float) ($approvedExpensesByPetugas[$item->user_id] ?? 0);
+                $selisih = $totalTunai - $totalPengeluaran;
+                $perluReimburse = $selisih < 0;
+
                 return [
                     'petugas_id' => $item->user_id,
                     'nama_petugas' => $item->user->namaLengkap ?? 'N/A',
                     'id_display' => "PTG-" . str_pad($item->user_id, 3, '0', STR_PAD_LEFT),
                     'wilayah' => ($item->user->alamat ?? '') == 'talbar' ? 'Talang Barat' : 'Talang Timur',
-                    'total_uang_tunai' => (float) $item->total_tunai,
-                    'status' => 'BELUM DISETOR'
+                    'total_uang_tunai' => $totalTunai,
+                    'total_pengeluaran_approved' => $totalPengeluaran,
+                    'total_yang_disetor' => $perluReimburse ? 0 : $selisih,
+                    'reimburse' => $perluReimburse ? abs($selisih) : 0,
+                    'status' => $perluReimburse ? 'PERLU REIMBURSE' : 'BELUM DISETOR'
+                ];
+            });
+
+        // Setoran yang sudah dikonfirmasi bulan ini — tiap event konfirmasi = baris terpisah
+        $riwayatSetoran = Payment::with('user')
+            ->where('metodePembayaran', 'tunai')
+            ->where('is_confirmed', 1)
+            ->whereNotNull('confirmed_at')
+            ->whereMonth('confirmed_at', $month)
+            ->whereYear('confirmed_at', $year)
+            ->select('user_id', 'confirmed_at', DB::raw('SUM(nominalPembayaran) as total_tunai'), DB::raw('COUNT(*) as jumlah_transaksi'))
+            ->groupBy('user_id', 'confirmed_at')
+            ->orderBy('confirmed_at', 'desc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'petugas_id'        => $item->user_id,
+                    'nama_petugas'      => $item->user->namaLengkap ?? 'N/A',
+                    'id_display'        => 'PTG-' . str_pad($item->user_id, 3, '0', STR_PAD_LEFT),
+                    'wilayah'           => ($item->user->alamat ?? '') == 'talbar' ? 'Talang Barat' : 'Talang Timur',
+                    'total_tunai'       => (float) $item->total_tunai,
+                    'jumlah_transaksi'  => (int) $item->jumlah_transaksi,
+                    'dikonfirmasi_pada' => $item->confirmed_at,
                 ];
             });
 
@@ -87,19 +147,27 @@ class AdminRepository
             'stats' => [
                 'pemasukan_kotor' => (float) $pemasukanKotor,
                 'pemasukan_piutang' => (float) $pemasukanPiutang,
+                'tagihan_tertunda' => (float) $tagihanTertunda,
                 'pengeluaran_kotor' => (float) $pengeluaranKotor,
                 'saldo_bersih' => (float) ($pemasukanKotor - $pengeluaranKotor),
                 'non_tunai' => (float) $pemasukanNonTunai,
                 'tunai' => (float) $pemasukanTunai,
             ],
-            'daftar_setoran' => $setoranPetugas,
+            'daftar_setoran'   => $setoranPetugas,
+            'riwayat_setoran'  => $riwayatSetoran,
             'riwayat_transaksi' => $riwayatPembayaran
         ];
     }
 
     public function confirmSetoran($petugasId)
     {
-        return Payment::where('user_id', $petugasId)->where('metodePembayaran', 'tunai')->where('is_confirmed', 0)->update(['is_confirmed' => 1]);
+        return Payment::where('user_id', $petugasId)
+            ->where('metodePembayaran', 'tunai')
+            ->where('is_confirmed', 0)
+            ->update([
+                'is_confirmed' => 1,
+                'confirmed_at' => now(),
+            ]);
     }
 
     public function getComplaintManagement($request)

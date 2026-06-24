@@ -49,8 +49,8 @@ class PaymentController extends Controller
                 $payment = $this->paymentRepo->processCashPayment($request->all());
                 return $this->successResponse($payment, "Pembayaran tunai berhasil diproses");
             } else {
-                // Jika petugas yang trigger Midtrans (misal minta QRIS)
-                $result = $this->paymentRepo->initiateMidtrans($request->all());
+                // Petugas yang trigger Midtrans — skip user_id check karena billing milik pelanggan
+                $result = $this->paymentRepo->initiateMidtrans($request->all(), true);
                 return $this->successResponse($result, "Snap Token pembayaran berhasil didapatkan");
             }
         } catch (Exception $e) {

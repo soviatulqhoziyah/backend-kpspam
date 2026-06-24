@@ -12,17 +12,18 @@ use App\Http\Controllers\Api\PelangganController;
 use App\Http\Controllers\Api\PetugasDashboardController;
 use App\Http\Controllers\Api\TarifController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\UserImportController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 // Endpoint ini akan dipanggil otomatis oleh server Midtrans
 Route::post('/midtrans/callback', [MidtransWebhookController::class, 'handleNotification']);
 
 
 // Harus Login
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::get('/user', function (Request $request) {
@@ -50,6 +51,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/expenses', [ExpenseController::class, 'index']); //pengeluaran
         Route::post('/expenses', [ExpenseController::class, 'store']); //catat pengeluaran
         Route::put('/expenses/{id}/status', [ExpenseController::class, 'updateStatus']); // Khusus Admin
+        Route::get('/tarif-aktif', [TarifController::class, 'getActiveTarif']); //tarif aktif untuk billing input
         Route::get('/profile', [PetugasDashboardController::class, 'profile']); //profil
     });
 
@@ -67,13 +69,18 @@ Route::middleware('auth:sanctum')->group(function () {
     // Dashboard Admin (Web)
     Route::prefix('admin')->middleware('role:admin')->group(function () {
         Route::get('/dashboard-summary', [AdminDashboardController::class, 'index']);
+        Route::get('/dashboard-summary/export', [AdminDashboardController::class, 'exportRingkasanTahunan']);
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);
         Route::put('/users/{id}', [UserController::class, 'update']);
         Route::delete('/users/{id}', [UserController::class, 'destroy']);
+        Route::get('/users/import-template', [UserImportController::class, 'downloadTemplate']);
+        Route::post('/users/import', [UserImportController::class, 'import']);
         Route::get('/transaction-detail', [AdminDashboardController::class, 'monthlyDetail']);
+        Route::get('/transaction-detail/export', [AdminDashboardController::class, 'exportRiwayatPembayaran']);
         Route::post('/confirm-setoran/{petugasId}', [AdminDashboardController::class, 'confirmPayment']);
         Route::get('/complaints-management', [AdminDashboardController::class, 'complaintIndex']);
+        Route::get('/complaints-management/export', [AdminDashboardController::class, 'exportPengaduan']);
         Route::get('/tarifs', [TarifController::class, 'index']);
         Route::post('/tarifs', [TarifController::class, 'store']);
         Route::put('/tarifs/{id}', [TarifController::class, 'update']);

@@ -44,6 +44,18 @@ class TarifController extends Controller {
         }
     }
 
+    public function getActiveTarif() {
+        try {
+            $tarif = $this->tarifRepo->getActive();
+            if (!$tarif) {
+                return $this->errorResponse("Tarif aktif tidak ditemukan", 404);
+            }
+            return $this->successResponse($tarif, "Tarif aktif berhasil dimuat");
+        } catch (Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
     public function destroy($id) {
         try {
             $this->tarifRepo->delete($id);

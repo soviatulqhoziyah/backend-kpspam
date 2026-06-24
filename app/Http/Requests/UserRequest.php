@@ -34,9 +34,11 @@ class UserRequest extends FormRequest
             'password' => $this->isMethod('post') ? 'required|min:6' : 'nullable|min:6',
 
             'role' => 'required|in:admin,pelanggan,petugas',
+            'status' => 'nullable|in:aktif,non_aktif',
             'alamat' => 'required|in:talbar,taltim',
-            'noTelepon' => 'required',
-            'namaLengkap' => 'required',
+            'noTelepon' => 'required|string|max:20',
+            'namaLengkap' => 'required|string|max:100',
+            'meteranAwal' => 'nullable|integer|min:0',
         ];
     }
 }

@@ -24,7 +24,7 @@ class BillingRequest extends FormRequest
         return [
             'user_id' => 'required|exists:users,id',
             'periode' => 'required',
-            'meteranSekarang' => 'required|integer',
+            'meteranSekarang' => 'required|integer|min:0',
             'fotoMeteran' => 'required|image|mimes:jpeg,png,jpg|max:2048',
             'jumlahPemakaian' => 'integer',
             'totalTagihan' => 'numeric',

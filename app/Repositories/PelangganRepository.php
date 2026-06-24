@@ -77,7 +77,7 @@ class PelangganRepository
                 'tanggal_bayar_formatted' => "Dibayar pada " . \Carbon\Carbon::parse($pay->tanggalBayar)->translatedFormat('d M Y'),
                 'total_bayar' => (float) $pay->nominalPembayaran,
                 'status' => 'LUNAS',
-                'download_url' => url("/api/payments/receipt/" . $pay->id)
+                'download_url' => null
             ];
         });
     }
@@ -96,7 +96,7 @@ class PelangganRepository
 
         // 3. Mapping data untuk Stepper UI
         $dataMapped = $complaints->map(function ($item) {
-            // Logika konversi status DB ke Step UI (1-4)
+            // Logika konversi status DB ke Step UI (1-3)
             $step = 1;
             $statusTeks = "LAPORAN TERKIRIM";
 
@@ -104,10 +104,10 @@ class PelangganRepository
                 $step = 1;
                 $statusTeks = "LAPORAN TERKIRIM";
             } elseif ($item->status == 'proses') {
-                $step = 3; // Kita langsung ke step 3 (Sedang Diperbaiki)
+                $step = 2;
                 $statusTeks = "SEDANG DIPERBAIKI";
             } elseif ($item->status == 'selesai') {
-                $step = 4;
+                $step = 3;
                 $statusTeks = "SELESAI";
             }
 

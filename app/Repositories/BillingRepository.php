@@ -48,9 +48,7 @@ class BillingRepository
                 throw new Exception("Gagal: Anda hanya diperbolehkan menginput tagihan untuk bulan " . $now->translatedFormat('F Y'));
             }
 
-            // 3. LOGIKA: Tidak boleh input untuk bulan depan (Future Date)
-            // Kita bandingkan bulan & tahunnya saja
-            // 3. LOGIKA: Cek Duplikasi (Agar tidak double input di bulan yang sama)
+            // 3. LOGIKA: Cek Duplikasi (Satu user hanya boleh punya satu tagihan per bulan)
             $isAlreadyExists = $this->model->where('user_id', $data['user_id'])
                 ->where('periode', $data['periode'])
                 ->exists();
@@ -59,21 +57,17 @@ class BillingRepository
                 throw new Exception("Tagihan pelanggan ini untuk periode '{$data['periode']}' sudah diterbitkan.");
             }
 
-            // 4. LOGIKA: Cek Duplikasi (Satu user hanya boleh punya satu tagihan per bulan)
-            // Menggunakan format yang seragam untuk pengecekan
-            $isAlreadyExists = $this->model->where('user_id', $data['user_id'])
-                ->where('periode', $data['periode'])
-                ->exists();
-            if ($isAlreadyExists) {
-                throw new Exception("Tagihan pelanggan ini untuk periode '{$data['periode']}' sudah pernah diterbitkan.");
-            }
-
             // 5. Cari Meteran Terakhir (History bulan sebelumnya)
             $lastBilling = $this->model->where('user_id', $data['user_id'])
                 ->orderBy('id', 'desc')
                 ->first();
 
-            $meteranLalu = $lastBilling ? $lastBilling->meteranSekarang : 0;
+            if ($lastBilling) {
+                $meteranLalu = $lastBilling->meteranSekarang;
+            } else {
+                // Belum ada billing sebelumnya — gunakan meteranAwal dari data user
+                $meteranLalu = (int) (\App\Models\User::find($data['user_id'])->meteranAwal ?? 0);
+            }
 
             // 6. LOGIKA: Validasi angka meteran
             $meteranSekarang = $data['meteranSekarang'];

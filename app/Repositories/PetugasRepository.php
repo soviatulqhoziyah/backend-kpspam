@@ -32,8 +32,9 @@ class PetugasRepository
             ->whereYear('tanggalBayar', Carbon::now()->year)
             ->sum('nominalPembayaran');
 
-        $pemasukanNonTunai = Payment::where('user_id', $petugasId)
-            ->where('metodePembayaran', 'non_tunai')
+        // Non-tunai dikelola sistem (Midtrans), user_id-nya adalah pelanggan bukan petugas
+        // Tampilkan total non-tunai bulan ini lintas semua pelanggan
+        $pemasukanNonTunai = Payment::where('metodePembayaran', 'non_tunai')
             ->whereMonth('tanggalBayar', Carbon::now()->month)
             ->whereYear('tanggalBayar', Carbon::now()->year)
             ->sum('nominalPembayaran');
@@ -82,20 +83,20 @@ class PetugasRepository
             $query->where('namaLengkap', 'like', '%' . $request->search . '%');
         }
 
-        $users = $query->get();
+        $users = $query->with('billings')->get();
 
-        // 4. Mapping Status (Cek satu-satu statusnya)
+        // 4. Mapping Status — pakai in-memory dari relasi yang sudah di-eager load
         $collection = $users->map(function ($user) use ($currentMonth) {
-            $billingBulanIni = Billing::where('user_id', $user->id)
+            $billingBulanIni = $user->billings
                 ->where('periode', $currentMonth)
                 ->first();
 
-            $adaTunggakan = Billing::where('user_id', $user->id)
+            $adaTunggakan = $user->billings
                 ->where('status', 'menunggak')
-                ->exists();
+                ->isNotEmpty();
 
-            $lastMeterRecord = Billing::where('user_id', $user->id)
-                ->orderBy('id', 'desc')
+            $lastMeterRecord = $user->billings
+                ->sortByDesc('id')
                 ->first();
 
             // Tentukan label status
@@ -112,7 +113,7 @@ class PetugasRepository
                 'id' => $user->id,
                 'nama' => $user->namaLengkap,
                 'alamat' => $user->alamat == 'talbar' ? 'Jorong Talang Barat' : 'Jorong Talang Timur',
-                'meter_terakhir' => $lastMeterRecord ? $lastMeterRecord->meteranSekarang : 0,
+                'meter_terakhir' => $lastMeterRecord ? $lastMeterRecord->meteranSekarang : (int) ($user->meteranAwal ?? 0),
                 'status_tag' => $statusLabel,
                 'sudah_dicatat_bulan_ini' => $billingBulanIni ? true : false
             ];
@@ -147,7 +148,7 @@ class PetugasRepository
         $lastMeterRecord = Billing::where('user_id', $id)
             ->orderBy('id', 'desc')
             ->first();
-        $meterTerakhir = $lastMeterRecord ? $lastMeterRecord->meteranSekarang : 0;
+        $meterTerakhir = $lastMeterRecord ? $lastMeterRecord->meteranSekarang : (int) ($user->meteranAwal ?? 0);
 
         // 2. Ambil semua tagihan yang statusnya 'menunggak'
         $tunggakan = Billing::where('user_id', $id)

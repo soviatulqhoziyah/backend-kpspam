@@ -24,7 +24,8 @@ class User extends Authenticatable
         'status',
         'alamat',
         'noTelepon',
-        'namaLengkap'
+        'namaLengkap',
+        'meteranAwal',
     ];
 
 

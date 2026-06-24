@@ -8,7 +8,7 @@ use App\Repositories\UserRepository;
 use App\Traits\ApiResponse;
 use Exception;
 use Illuminate\Support\Facades\Auth;
-use Symfony\Component\HttpFoundation\Request;
+use Illuminate\Http\Request;
 
 class UserController extends Controller
 {

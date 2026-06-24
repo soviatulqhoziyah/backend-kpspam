@@ -17,6 +17,10 @@ class TarifRepository {
         return $this->model->latest()->get();
     }
 
+    public function getActive() {
+        return $this->model->where('status', 'aktif')->first();
+    }
+
     public function store($data) {
         return DB::transaction(function () use ($data) {
             // Jika tarif baru ini diset AKTIF

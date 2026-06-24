@@ -24,6 +24,7 @@ class ComplaintRequest extends FormRequest
         return [
             'deskripsi' => 'required|min:10',
             'fotoBukti' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+            'kategori' => 'nullable|in:penyumbatan,kebocoran,air_keruh,lainnya',
         ];
     }
 }
