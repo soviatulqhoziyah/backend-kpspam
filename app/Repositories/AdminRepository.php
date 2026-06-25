@@ -71,13 +71,22 @@ class AdminRepository
         $pemasukanNonTunai = Payment::where('metodePembayaran', 'non_tunai')->whereMonth('tanggalBayar', $month)->whereYear('tanggalBayar', $year)->sum('nominalPembayaran');
         $pemasukanTunai = Payment::where('metodePembayaran', 'tunai')->whereMonth('tanggalBayar', $month)->whereYear('tanggalBayar', $year)->sum('nominalPembayaran');
 
-        // Pengeluaran yang sudah di-approve per petugas bulan ini (dikurangi dari setoran)
+        // Pengeluaran yang sudah di-approve per petugas bulan ini (fallback jika belum ada setoran sebelumnya)
         $approvedExpensesByPetugas = Expense::where('status', 'approve')
             ->whereMonth('tanggalPengeluaran', $month)
             ->whereYear('tanggalPengeluaran', $year)
             ->select('user_id', DB::raw('SUM(nominal) as total_expense'))
             ->groupBy('user_id')
             ->pluck('total_expense', 'user_id');
+
+        // Waktu konfirmasi setoran terakhir per petugas — pengeluaran sebelum waktu ini sudah dipotong
+        $lastConfirmedByPetugas = Payment::where('metodePembayaran', 'tunai')
+            ->where('is_confirmed', 1)
+            ->whereMonth('tanggalBayar', $month)
+            ->whereYear('tanggalBayar', $year)
+            ->select('user_id', DB::raw('MAX(confirmed_at) as last_confirmed'))
+            ->groupBy('user_id')
+            ->pluck('last_confirmed', 'user_id');
 
         $setoranPetugas = Payment::with('user')
             ->where('metodePembayaran', 'tunai')
@@ -87,9 +96,22 @@ class AdminRepository
             ->select('user_id', DB::raw('SUM(nominalPembayaran) as total_tunai'))
             ->groupBy('user_id')
             ->get()
-            ->map(function ($item) use ($approvedExpensesByPetugas) {
+            ->map(function ($item) use ($approvedExpensesByPetugas, $lastConfirmedByPetugas, $month, $year) {
                 $totalTunai = (float) $item->total_tunai;
-                $totalPengeluaran = (float) ($approvedExpensesByPetugas[$item->user_id] ?? 0);
+                $lastConfirmed = $lastConfirmedByPetugas[$item->user_id] ?? null;
+
+                if ($lastConfirmed) {
+                    // Hanya hitung pengeluaran yang di-approve SETELAH setoran terakhir dikonfirmasi
+                    $totalPengeluaran = (float) Expense::where('user_id', $item->user_id)
+                        ->where('status', 'approve')
+                        ->where('updated_at', '>', $lastConfirmed)
+                        ->whereMonth('tanggalPengeluaran', $month)
+                        ->whereYear('tanggalPengeluaran', $year)
+                        ->sum('nominal');
+                } else {
+                    $totalPengeluaran = (float) ($approvedExpensesByPetugas[$item->user_id] ?? 0);
+                }
+
                 $selisih = $totalTunai - $totalPengeluaran;
                 $perluReimburse = $selisih < 0;
 
@@ -107,7 +129,7 @@ class AdminRepository
             });
 
         // Setoran yang sudah dikonfirmasi bulan ini — tiap event konfirmasi = baris terpisah
-        $riwayatSetoran = Payment::with('user')
+        $confirmedBatchesRaw = Payment::with('user')
             ->where('metodePembayaran', 'tunai')
             ->where('is_confirmed', 1)
             ->whereNotNull('confirmed_at')
@@ -115,32 +137,101 @@ class AdminRepository
             ->whereYear('confirmed_at', $year)
             ->select('user_id', 'confirmed_at', DB::raw('SUM(nominalPembayaran) as total_tunai'), DB::raw('COUNT(*) as jumlah_transaksi'))
             ->groupBy('user_id', 'confirmed_at')
-            ->orderBy('confirmed_at', 'desc')
-            ->get()
-            ->map(function ($item) {
+            ->orderBy('user_id')
+            ->orderBy('confirmed_at') // urutan kronologis per user untuk menemukan batch sebelumnya
+            ->get();
+
+        // Kumpulkan timestamp per user (sudah urut ASC) untuk mengetahui window expense tiap batch
+        $userBatchTimestamps = [];
+        foreach ($confirmedBatchesRaw as $batch) {
+            $userBatchTimestamps[$batch->user_id][] = $batch->confirmed_at;
+        }
+
+        $riwayatSetoran = $confirmedBatchesRaw
+            ->sortByDesc('confirmed_at')
+            ->map(function ($item) use ($userBatchTimestamps, $month, $year) {
+                $uid = $item->user_id;
+                $timestamps = $userBatchTimestamps[$uid] ?? [];
+
+                // Cari confirmed_at batch SEBELUMNYA untuk menentukan window expense batch ini
+                $prevConfirmedAt = null;
+                foreach ($timestamps as $ts) {
+                    if ($ts < $item->confirmed_at) {
+                        $prevConfirmedAt = $ts;
+                    }
+                }
+
+                // Pengeluaran yang masuk di window batch ini: approved antara prev dan this confirmation
+                $expenseQuery = Expense::where('user_id', $uid)
+                    ->where('status', 'approve')
+                    ->whereMonth('tanggalPengeluaran', $month)
+                    ->whereYear('tanggalPengeluaran', $year)
+                    ->where('updated_at', '<=', $item->confirmed_at);
+                if ($prevConfirmedAt) {
+                    $expenseQuery->where('updated_at', '>', $prevConfirmedAt);
+                }
+                $totalPengeluaran = (float) $expenseQuery->sum('nominal');
+
+                $totalTunai = (float) $item->total_tunai;
+                $totalYangDisetor = max(0, $totalTunai - $totalPengeluaran);
+
                 return [
-                    'petugas_id'        => $item->user_id,
-                    'nama_petugas'      => $item->user->namaLengkap ?? 'N/A',
-                    'id_display'        => 'PTG-' . str_pad($item->user_id, 3, '0', STR_PAD_LEFT),
-                    'wilayah'           => ($item->user->alamat ?? '') == 'talbar' ? 'Talang Barat' : 'Talang Timur',
-                    'total_tunai'       => (float) $item->total_tunai,
-                    'jumlah_transaksi'  => (int) $item->jumlah_transaksi,
-                    'dikonfirmasi_pada' => $item->confirmed_at,
+                    'petugas_id'         => $uid,
+                    'nama_petugas'       => $item->user->namaLengkap ?? 'N/A',
+                    'id_display'         => 'PTG-' . str_pad($uid, 3, '0', STR_PAD_LEFT),
+                    'wilayah'            => ($item->user->alamat ?? '') == 'talbar' ? 'Talang Barat' : 'Talang Timur',
+                    'total_tunai'        => $totalTunai,
+                    'total_pengeluaran'  => $totalPengeluaran,
+                    'total_yang_disetor' => $totalYangDisetor,
+                    'jumlah_transaksi'   => (int) $item->jumlah_transaksi,
+                    'dikonfirmasi_pada'  => $item->confirmed_at,
+                ];
+            })->values();
+
+        // Pembayaran sudah lunas (tunai atau non_tunai sudah dikonfirmasi Midtrans)
+        $completedPayments = Payment::with(['billing.user'])
+            ->whereMonth('tanggalBayar', $month)
+            ->whereYear('tanggalBayar', $year)
+            ->latest('tanggalBayar')
+            ->get()
+            ->map(function ($pay) {
+                $user = $pay->billing->user ?? null;
+                return [
+                    'nama_pelanggan' => $user->namaLengkap ?? 'N/A',
+                    'alamat' => ($user->alamat ?? '') == 'talbar' ? 'Talang Barat' : 'Talang Timur',
+                    'total_pembayaran' => (float) $pay->nominalPembayaran,
+                    'metode' => strtoupper($pay->metodePembayaran),
+                    'status' => 'LUNAS',
+                    '_sort' => $pay->tanggalBayar,
                 ];
             });
 
-        $riwayatPembayaran = Payment::with(['billing.user'])
-            ->whereMonth('tanggalBayar', $month)->whereYear('tanggalBayar', $year)
-            ->latest()
+        // Tagihan Midtrans yang sudah dikirim ke pelanggan tapi belum dibayar
+        $pendingMidtrans = Billing::with('user')
+            ->whereNotNull('midtrans_order_id')
+            ->where('status', 'menunggak')
+            ->whereMonth('updated_at', $month)
+            ->whereYear('updated_at', $year)
             ->get()
-            ->map(function ($pay) {
+            ->map(function ($bill) {
+                $user = $bill->user ?? null;
                 return [
-                    'nama_pelanggan' => $pay->billing->user->namaLengkap ?? 'N/A',
-                    'alamat' => ($pay->billing->user->alamat ?? '') == 'talbar' ? 'Talang Barat' : 'Talang Timur',
-                    'total_pembayaran' => (float) $pay->nominalPembayaran,
-                    'metode' => strtoupper($pay->metodePembayaran),
-                    'status' => 'LUNAS'
+                    'nama_pelanggan' => $user->namaLengkap ?? 'N/A',
+                    'alamat' => ($user->alamat ?? '') == 'talbar' ? 'Talang Barat' : 'Talang Timur',
+                    'total_pembayaran' => (float) $bill->totalTagihan,
+                    'metode' => 'NON_TUNAI',
+                    'status' => 'MENUNGGU',
+                    '_sort' => $bill->updated_at,
                 ];
+            });
+
+        $riwayatPembayaran = $completedPayments
+            ->concat($pendingMidtrans)
+            ->sortByDesc('_sort')
+            ->values()
+            ->map(function ($item) {
+                unset($item['_sort']);
+                return $item;
             });
 
         return [

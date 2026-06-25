@@ -75,9 +75,33 @@ class UserImportController extends Controller
     // Proses import
     public function import(Request $request)
     {
-        $request->validate(['file' => 'required|file|max:5120']);
+        // Tangkap output stray (PHP warning/notice dari PhpSpreadsheet atau OPcache lama)
+        // agar tidak merusak JSON response body
+        ob_start();
 
         try {
+            $uploadedFile = $request->file('file');
+            if ($uploadedFile === null || !$uploadedFile->isValid()) {
+                ob_end_clean();
+                $phpErrors = [1=>'INI_SIZE',2=>'FORM_SIZE',3=>'PARTIAL',4=>'NO_FILE',6=>'NO_TMP_DIR',7=>'CANT_WRITE',8=>'EXTENSION'];
+                $code = $uploadedFile?->getError() ?? 4;
+                return $this->errorResponse('File gagal diproses server (kode: ' . ($phpErrors[$code] ?? $code) . '). Hubungi administrator.');
+            }
+
+            $validator = Validator::make(
+                ['file' => $uploadedFile],
+                ['file' => 'required|file|max:5120'],
+                [
+                    'file.required' => 'File harus diunggah.',
+                    'file.file'     => 'File tidak valid.',
+                    'file.max'      => 'Ukuran file melebihi batas (maks 5MB).',
+                ]
+            );
+            if ($validator->fails()) {
+                ob_end_clean();
+                return $this->errorResponse($validator->errors()->first());
+            }
+
             $file = $request->file('file');
             $spreadsheet = IOFactory::load($file->getPathname());
             $sheet = $spreadsheet->getActiveSheet();
@@ -188,6 +212,7 @@ class UserImportController extends Controller
                 $rowNumber++;
             }
 
+            ob_end_clean(); // Buang output stray, kirim JSON bersih
             return $this->successResponse([
                 'berhasil'       => $berhasil,
                 'gagal'          => count($gagal),
@@ -195,6 +220,7 @@ class UserImportController extends Controller
             ], "$berhasil user berhasil diimport" . (count($gagal) > 0 ? ", " . count($gagal) . " gagal." : "."));
 
         } catch (Exception $e) {
+            ob_end_clean();
             return $this->errorResponse('Gagal membaca file: ' . $e->getMessage());
         }
     }

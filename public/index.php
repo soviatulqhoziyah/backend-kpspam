@@ -5,6 +5,10 @@ use Illuminate\Http\Request;
 
 define('LARAVEL_START', microtime(true));
 
+// Pastikan PHP error tidak bocor ke response body (penting saat display_errors=On di dev)
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+
 // Determine if the application is in maintenance mode...
 if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php')) {
     require $maintenance;
