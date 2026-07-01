@@ -22,9 +22,10 @@ class ComplaintRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'deskripsi' => 'required|min:10',
-            'fotoBukti' => 'required|image|mimes:jpeg,png,jpg|max:2048',
-            'kategori' => 'nullable|in:penyumbatan,kebocoran,air_keruh,lainnya',
+            'deskripsi'        => 'required|min:10',
+            'foto_bukti_base64'=> 'required|string',
+            'foto_bukti_ext'   => 'required|string|in:jpg,jpeg,png',
+            'kategori'         => 'nullable|in:penyumbatan,kebocoran,air_keruh,lainnya',
         ];
     }
 }

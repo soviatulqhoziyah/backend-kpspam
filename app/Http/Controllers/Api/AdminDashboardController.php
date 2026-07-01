@@ -291,11 +291,27 @@ class AdminDashboardController extends Controller
             'font' => ['bold' => true],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'EFF6FF']],
         ];
+        $pemasukanPiutang = (float) ($data['stats']['pemasukan_piutang'] ?? 0);
+        $pembayaranBulanIni = $totalSemua - $pemasukanPiutang;
+
         $sheet->mergeCells("A{$rowNum}:B{$rowNum}");
         $sheet->setCellValue("A{$rowNum}", 'TOTAL KESELURUHAN');
         $sheet->setCellValue("C{$rowNum}", $totalSemua);
         $sheet->getStyle("C{$rowNum}")->getNumberFormat()->setFormatCode('"Rp "#,##0');
         $sheet->getStyle("A{$rowNum}:E{$rowNum}")->applyFromArray($summaryStyle);
+        $rowNum++;
+
+        $subStyle = ['font' => ['color' => ['rgb' => '475569']]];
+        $sheet->setCellValue("B{$rowNum}", 'Pembayaran Tagihan Bulan Ini');
+        $sheet->setCellValue("C{$rowNum}", $pembayaranBulanIni);
+        $sheet->getStyle("C{$rowNum}")->getNumberFormat()->setFormatCode('"Rp "#,##0');
+        $sheet->getStyle("A{$rowNum}:E{$rowNum}")->applyFromArray($subStyle);
+        $rowNum++;
+
+        $sheet->setCellValue("B{$rowNum}", 'Pelunasan Piutang Bulan Lalu');
+        $sheet->setCellValue("C{$rowNum}", $pemasukanPiutang);
+        $sheet->getStyle("C{$rowNum}")->getNumberFormat()->setFormatCode('"Rp "#,##0');
+        $sheet->getStyle("A{$rowNum}:E{$rowNum}")->applyFromArray($subStyle);
         $rowNum++;
 
         $sheet->mergeCells("A{$rowNum}:B{$rowNum}");
@@ -310,6 +326,17 @@ class AdminDashboardController extends Controller
         $sheet->setCellValue("C{$rowNum}", $totalNonTunai);
         $sheet->getStyle("C{$rowNum}")->getNumberFormat()->setFormatCode('"Rp "#,##0');
         $sheet->getStyle("A{$rowNum}:E{$rowNum}")->applyFromArray($summaryStyle);
+        $rowNum++;
+
+        $rowNum++;
+        $sheet->mergeCells("A{$rowNum}:B{$rowNum}");
+        $sheet->setCellValue("A{$rowNum}", 'SALDO PIUTANG (Belum Lunas)');
+        $sheet->setCellValue("C{$rowNum}", $data['stats']['tagihan_tertunda'] ?? 0);
+        $sheet->getStyle("C{$rowNum}")->getNumberFormat()->setFormatCode('"Rp "#,##0');
+        $sheet->getStyle("A{$rowNum}:E{$rowNum}")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'B91C1C']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FEF2F2']],
+        ]);
 
         // Auto-size kolom
         foreach (range('A', 'E') as $col) {

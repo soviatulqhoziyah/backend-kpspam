@@ -65,4 +65,35 @@ class UserController extends Controller
             return $this->errorResponse($e->getMessage());
         }
     }
+
+    public function getPendingUsers()
+    {
+        try {
+            $data = $this->userRepo->getPendingUsers();
+            return $this->successResponse($data, "Daftar verifikasi berhasil dimuat");
+        } catch (Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    public function approve($id)
+    {
+        try {
+            $this->userRepo->approveUser($id);
+            return $this->successResponse(null, "Pendaftaran berhasil disetujui");
+        } catch (Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    public function reject(Request $request, $id)
+    {
+        try {
+            $request->validate(['catatan' => 'nullable|string|max:500']);
+            $this->userRepo->rejectUser($id, $request->catatan);
+            return $this->successResponse(null, "Pendaftaran berhasil ditolak");
+        } catch (Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
 }

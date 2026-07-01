@@ -3,6 +3,8 @@
 namespace App\Repositories;
 
 use App\Models\Billing;
+use App\Models\Payment;
+use App\Services\SupabaseStorage;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 
@@ -12,10 +14,41 @@ class PelangganRepository
     {
         Carbon::setLocale('id');
 
+        // Auto-sync billing yang punya midtrans_order_id tapi belum lunas
+        // Ini memastikan status diperbarui meski WebView sudah ditutup sebelumnya
+        $pendingMidtrans = Billing::where('user_id', $userId)
+            ->where('status', 'menunggak')
+            ->whereNotNull('midtrans_order_id')
+            ->get();
+
+        foreach ($pendingMidtrans as $bill) {
+            try {
+                \Midtrans\Config::$serverKey = env('MIDTRANS_SERVER_KEY');
+                \Midtrans\Config::$isProduction = env('MIDTRANS_IS_PRODUCTION');
+                $statusResponse = \Midtrans\Transaction::status($bill->midtrans_order_id);
+                $txStatus = $statusResponse->transaction_status ?? '';
+
+                if ($txStatus === 'settlement' || $txStatus === 'capture') {
+                    \Illuminate\Support\Facades\DB::transaction(function () use ($bill) {
+                        $bill->update(['status' => 'lunas']);
+                        Payment::create([
+                            'billing_id'         => $bill->id,
+                            'user_id'            => $bill->user_id,
+                            'metodePembayaran'   => 'non_tunai',
+                            'nominalPembayaran'  => $bill->totalTagihan,
+                            'tanggalBayar'       => now(),
+                        ]);
+                    });
+                }
+            } catch (\Exception) {
+                // Abaikan error — mungkin transaksi belum ada di Midtrans
+            }
+        }
+
         // 1. Ambil semua tagihan menunggak, urutkan dari ID terkecil (Paling Lama)
         $billings = Billing::where('user_id', $userId)
             ->where('status', 'menunggak')
-            ->orderBy('id', 'asc') // <--- PERBAIKAN DI SINI (Lama ke Baru)
+            ->orderBy('id', 'asc')
             ->get();
 
         // 2. Mapping data agar sesuai dengan UI
@@ -33,7 +66,7 @@ class PelangganRepository
                 'periode' => $bill->periode,
                 'nominal' => (float) $bill->totalTagihan,
                 'jatuh_tempo' => "Jatuh tempo: 20 " . $bill->periode,
-                'keterangan_telat' => $isOverdue ? "Terlambat $daysOverdue hari" : "Tagihan Berjalan",
+                'keterangan_telat' => $isOverdue ? "Segera bayar!" : "Tagihan Berjalan",
                 'is_overdue' => $isOverdue
             ];
         });
@@ -71,13 +104,19 @@ class PelangganRepository
         $payments = $query->latest('tanggalBayar')->get();
 
         return $payments->map(function ($pay) {
+            $billing = $pay->billing;
             return [
-                'id_payment' => $pay->id,
-                'periode' => $pay->billing->periode,
-                'tanggal_bayar_formatted' => "Dibayar pada " . \Carbon\Carbon::parse($pay->tanggalBayar)->translatedFormat('d M Y'),
-                'total_bayar' => (float) $pay->nominalPembayaran,
-                'status' => 'LUNAS',
-                'download_url' => null
+                'id_payment'             => $pay->id,
+                'periode'                => $billing->periode,
+                'tanggal_bayar_formatted'=> "Dibayar pada " . \Carbon\Carbon::parse($pay->tanggalBayar)->translatedFormat('d M Y'),
+                'total_bayar'            => (float) $pay->nominalPembayaran,
+                'status'                 => 'LUNAS',
+                'metode'                 => $pay->metodePembayaran === 'tunai' ? 'Tunai' : 'Non-Tunai (QRIS)',
+                'meteran_lalu'           => (int) $billing->meteranLalu,
+                'meteran_sekarang'       => (int) $billing->meteranSekarang,
+                'pemakaian'              => (int) $billing->jumlahPemakaian,
+                'foto_meteran'           => SupabaseStorage::buildUrl($billing->fotoMeteran),
+                'download_url'           => null,
             ];
         });
     }
@@ -119,7 +158,7 @@ class PelangganRepository
                 'status_db' => $item->status,
                 'status_label' => $statusTeks,
                 'current_step' => $step, // Kirim angka 1-4 untuk Stepper di Flutter
-                'foto_bukti' => asset('storage/' . $item->fotoBukti),
+                'foto_bukti' => SupabaseStorage::buildUrl($item->fotoBukti),
             ];
         });
 

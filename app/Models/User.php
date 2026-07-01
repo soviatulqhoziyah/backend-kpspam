@@ -26,6 +26,9 @@ class User extends Authenticatable
         'noTelepon',
         'namaLengkap',
         'meteranAwal',
+        'no_kk',
+        'foto_kk',
+        'catatan_penolakan',
     ];
 
 

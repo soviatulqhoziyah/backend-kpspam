@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Repositories;
+use App\Services\SupabaseStorage;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Complaint;
 
@@ -23,14 +24,19 @@ class ComplaintRepository {
     }
 
     // Simpan pengaduan baru
-    public function store($data, $file) {
-        $path = $file->store('bukti_pengaduan', 'public');
+    public function store($data, string $base64Image, string $ext) {
+        $imageData = base64_decode($base64Image);
+        if ($imageData === false) {
+            throw new \Exception("Data foto tidak valid.");
+        }
+        $filename = 'bukti_pengaduan_' . time() . '_' . Auth::id() . '.' . $ext;
+        $fotoUrl = SupabaseStorage::upload('bukti_pengaduan/' . $filename, $imageData, $ext);
 
         return $this->model->create([
             'user_id'   => Auth::id(),
             'deskripsi' => $data['deskripsi'],
             'kategori'  => $data['kategori'] ?? null,
-            'fotoBukti' => $path,
+            'fotoBukti' => $fotoUrl,
             'status'    => 'belumProses'
         ]);
     }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\BillingRequest;
 use App\Repositories\BillingRepository;
 use App\Traits\ApiResponse;
+use Illuminate\Http\Request;
 
 class BillingController extends Controller
 {
@@ -18,17 +19,67 @@ class BillingController extends Controller
         $this->billingRepo = $billingRepo;
     }
 
-    public function store(BillingRequest $request) 
+    public function showBulanIni($userId)
+    {
+        try {
+            $billing = $this->billingRepo->getBillingBulanIni((int) $userId);
+            if (!$billing) {
+                return $this->errorResponse('Tagihan bulan ini belum dicatat.');
+            }
+            return $this->successResponse([
+                'id'               => $billing->id,
+                'periode'          => $billing->periode,
+                'meteran_lalu'     => $billing->meteranLalu,
+                'meteran_sekarang' => $billing->meteranSekarang,
+                'jumlah_pemakaian' => $billing->jumlahPemakaian,
+                'total_tagihan'    => (float) $billing->totalTagihan,
+                'foto_meteran'     => $billing->fotoMeteran,
+                'status'           => $billing->status,
+                'can_edit'         => $billing->status === 'menunggak',
+            ]);
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    public function update(Request $request, $billingId)
+    {
+        try {
+            $request->validate([
+                'meteranSekarang'     => 'required|integer|min:0',
+                'foto_meteran_base64' => 'nullable|string',
+                'foto_meteran_ext'    => 'nullable|string|in:jpg,jpeg,png',
+            ]);
+            $billing = $this->billingRepo->updateBilling(
+                (int) $billingId,
+                (int) $request->meteranSekarang,
+                $request->input('foto_meteran_base64'),
+                $request->input('foto_meteran_ext', 'jpg'),
+            );
+            return $this->successResponse([
+                'id'               => $billing->id,
+                'meteran_sekarang' => $billing->meteranSekarang,
+                'jumlah_pemakaian' => $billing->jumlahPemakaian,
+                'total_tagihan'    => (float) $billing->totalTagihan,
+                'foto_meteran'     => $billing->fotoMeteran,
+            ], 'Tagihan berhasil diperbarui.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    public function store(BillingRequest $request)
     {
         try {
             // 1. Ambil data yang sudah lolos validasi
             $validated = $request->validated();
 
-            // 2. Ambil file foto (khusus fitur Smart Metering)
-            $file = $request->file('fotoMeteran');
+            // 2. Ambil base64 foto dari JSON body
+            $base64Image = $request->input('foto_meteran_base64');
+            $ext = $request->input('foto_meteran_ext', 'jpg');
 
-            // 3. Panggil Repository (Kirim data valid + file foto)
-            $billing = $this->billingRepo->storeBilling($validated, $file);
+            // 3. Panggil Repository
+            $billing = $this->billingRepo->storeBilling($validated, $base64Image, $ext);
 
             // 4. Ambil SEMUA tagihan yang masih menunggak untuk user tersebut
             $unpaidBillings = \App\Models\Billing::where('user_id', $validated['user_id'])

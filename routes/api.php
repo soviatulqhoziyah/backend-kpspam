@@ -10,15 +10,17 @@ use App\Http\Controllers\Api\MidtransWebhookController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PelangganController;
 use App\Http\Controllers\Api\PetugasDashboardController;
+use App\Http\Controllers\Api\RegisterController;
 use App\Http\Controllers\Api\TarifController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\UserImportController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-
+// Public endpoints (tanpa auth)
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
-// Endpoint ini akan dipanggil otomatis oleh server Midtrans
+Route::post('/register', [RegisterController::class, 'register'])->middleware('throttle:10,1');
+Route::post('/register/check-status', [RegisterController::class, 'checkStatus']);
 Route::post('/midtrans/callback', [MidtransWebhookController::class, 'handleNotification']);
 
 
@@ -44,8 +46,11 @@ Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
     Route::prefix('petugas')->middleware('role:petugas')->group(function () {
         Route::get('/dashboard', [PetugasDashboardController::class, 'index']); //beranda
         Route::get('/customers', [PetugasDashboardController::class, 'getCustomers']); //daftar pelanggan
+        Route::get('/riwayat-bulanan', [PetugasDashboardController::class, 'getRiwayatBulanan']); //riwayat pencatatan bulanan
         Route::get('/customers/{id}', [PetugasDashboardController::class, 'showCustomer']); //detail pelanggan
         Route::post('/billing-input', [BillingController::class, 'store']); //input tagihan
+        Route::get('/billing/{userId}/bulan-ini', [BillingController::class, 'showBulanIni']); //detail billing bulan ini
+        Route::match(['put', 'post'], '/billing/{billingId}', [BillingController::class, 'update']); //edit billing
         Route::post('/payments', [PaymentController::class, 'store']); //proses pembayaran
         Route::post('/payments/sync', [PaymentController::class, 'syncMidtrans']); //sinkronisasi pembayaran non tunai
         Route::get('/expenses', [ExpenseController::class, 'index']); //pengeluaran
@@ -76,6 +81,9 @@ Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
         Route::delete('/users/{id}', [UserController::class, 'destroy']);
         Route::get('/users/import-template', [UserImportController::class, 'downloadTemplate']);
         Route::post('/users/import', [UserImportController::class, 'import']);
+        Route::get('/users/pending', [UserController::class, 'getPendingUsers']);
+        Route::post('/users/{id}/approve', [UserController::class, 'approve']);
+        Route::post('/users/{id}/reject', [UserController::class, 'reject']);
         Route::get('/transaction-detail', [AdminDashboardController::class, 'monthlyDetail']);
         Route::get('/transaction-detail/export', [AdminDashboardController::class, 'exportRiwayatPembayaran']);
         Route::post('/confirm-setoran/{petugasId}', [AdminDashboardController::class, 'confirmPayment']);

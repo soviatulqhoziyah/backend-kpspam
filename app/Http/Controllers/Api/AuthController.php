@@ -33,9 +33,17 @@ class AuthController extends Controller
                 return $this->errorResponse("Username atau password salah", 401);
             }
 
-            // 3. Cek apakah status user aktif
+            // 3. Cek status user
+            if ($user->status === 'pending') {
+                return $this->errorResponse("Pendaftaran Anda sedang menunggu verifikasi admin.", 403, ['status' => 'pending']);
+            }
+            if ($user->status === 'ditolak') {
+                $pesan = "Pendaftaran Anda ditolak oleh admin.";
+                if ($user->catatan_penolakan) $pesan .= " Alasan: " . $user->catatan_penolakan;
+                return $this->errorResponse($pesan, 403, ['status' => 'ditolak', 'catatan' => $user->catatan_penolakan]);
+            }
             if ($user->status !== 'aktif') {
-                return $this->errorResponse("Akun anda dinonaktifkan. Silakan hubungi admin.", 403);
+                return $this->errorResponse("Akun Anda dinonaktifkan. Silakan hubungi admin.", 403);
             }
 
             // 4. Buat Token Sanctum

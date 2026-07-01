@@ -14,6 +14,71 @@ use PhpOffice\PhpSpreadsheet\Writer\Xls;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Exception;
 
+// Stream wrapper agar PhpSpreadsheet bisa baca dari memory tanpa filesystem
+class KpspamMemStream {
+    private static array $store = [];
+    private string $key = '';
+    private int $pos = 0;
+    public $context;
+
+    public static function put(string $data): string {
+        $key = uniqid('k', true);
+        self::$store[$key] = $data;
+        if (!in_array('kpspamss', stream_get_wrappers())) {
+            stream_wrapper_register('kpspamss', self::class);
+        }
+        return 'kpspamss://' . $key . '/import.xls';
+    }
+
+    public static function free(string $uri): void {
+        $key = parse_url($uri, PHP_URL_HOST);
+        unset(self::$store[$key]);
+    }
+
+    public function stream_open(string $path, string $mode, int $opts, ?string &$opened): bool {
+        $this->key = parse_url($path, PHP_URL_HOST);
+        $this->pos = 0;
+        return isset(self::$store[$this->key]);
+    }
+
+    public function stream_read(int $count): string {
+        $chunk = substr(self::$store[$this->key] ?? '', $this->pos, $count);
+        $this->pos += strlen($chunk);
+        return $chunk;
+    }
+
+    public function stream_seek(int $offset, int $whence = SEEK_SET): bool {
+        $len = strlen(self::$store[$this->key] ?? '');
+        $this->pos = match ($whence) {
+            SEEK_SET => $offset,
+            SEEK_CUR => $this->pos + $offset,
+            SEEK_END => $len + $offset,
+            default  => $this->pos,
+        };
+        return $this->pos >= 0 && $this->pos <= $len;
+    }
+
+    public function stream_tell(): int { return $this->pos; }
+    public function stream_eof(): bool { return $this->pos >= strlen(self::$store[$this->key] ?? ''); }
+    public function stream_close(): void {}
+    public function stream_write(string $d): int { return 0; }
+
+    private function statArray(int $size): array {
+        $s = ['dev'=>0,'ino'=>0,'mode'=>0100644,'nlink'=>1,'uid'=>0,'gid'=>0,
+              'rdev'=>0,'size'=>$size,'atime'=>0,'mtime'=>0,'ctime'=>0,'blksize'=>-1,'blocks'=>-1];
+        return array_merge(array_values($s), $s);
+    }
+
+    public function stream_stat(): array {
+        return $this->statArray(strlen(self::$store[$this->key] ?? ''));
+    }
+
+    public function url_stat(string $path, int $flags): array {
+        $key = parse_url($path, PHP_URL_HOST);
+        return $this->statArray(strlen(self::$store[$key] ?? ''));
+    }
+}
+
 class UserImportController extends Controller
 {
     use ApiResponse;
@@ -75,35 +140,29 @@ class UserImportController extends Controller
     // Proses import
     public function import(Request $request)
     {
-        // Tangkap output stray (PHP warning/notice dari PhpSpreadsheet atau OPcache lama)
-        // agar tidak merusak JSON response body
         ob_start();
 
         try {
-            $uploadedFile = $request->file('file');
-            if ($uploadedFile === null || !$uploadedFile->isValid()) {
+            $base64 = $request->input('file_base64');
+            $ext    = $request->input('file_ext', 'xlsx');
+
+            if (empty($base64)) {
                 ob_end_clean();
-                $phpErrors = [1=>'INI_SIZE',2=>'FORM_SIZE',3=>'PARTIAL',4=>'NO_FILE',6=>'NO_TMP_DIR',7=>'CANT_WRITE',8=>'EXTENSION'];
-                $code = $uploadedFile?->getError() ?? 4;
-                return $this->errorResponse('File gagal diproses server (kode: ' . ($phpErrors[$code] ?? $code) . '). Hubungi administrator.');
+                return $this->errorResponse('File harus diunggah.');
             }
 
-            $validator = Validator::make(
-                ['file' => $uploadedFile],
-                ['file' => 'required|file|max:5120'],
-                [
-                    'file.required' => 'File harus diunggah.',
-                    'file.file'     => 'File tidak valid.',
-                    'file.max'      => 'Ukuran file melebihi batas (maks 5MB).',
-                ]
-            );
-            if ($validator->fails()) {
+            $fileData = base64_decode($base64, true);
+            if ($fileData === false || strlen($fileData) === 0) {
                 ob_end_clean();
-                return $this->errorResponse($validator->errors()->first());
+                return $this->errorResponse('File tidak valid atau rusak.');
             }
 
-            $file = $request->file('file');
-            $spreadsheet = IOFactory::load($file->getPathname());
+            // Baca dari memory via custom stream wrapper — zero filesystem write
+            $readerType = strtolower($ext) === 'xlsx' ? 'Xlsx' : 'Xls';
+            $streamUri = KpspamMemStream::put($fileData);
+            $reader = IOFactory::createReader($readerType);
+            $spreadsheet = $reader->load($streamUri);
+            KpspamMemStream::free($streamUri);
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray(null, true, true, false);
 
@@ -212,7 +271,7 @@ class UserImportController extends Controller
                 $rowNumber++;
             }
 
-            ob_end_clean(); // Buang output stray, kirim JSON bersih
+            ob_end_clean();
             return $this->successResponse([
                 'berhasil'       => $berhasil,
                 'gagal'          => count($gagal),

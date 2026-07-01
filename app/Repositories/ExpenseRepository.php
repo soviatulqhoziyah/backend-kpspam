@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\Expense;
+use App\Services\SupabaseStorage;
 use Illuminate\Support\Facades\Auth;
 
 class ExpenseRepository
@@ -44,7 +45,7 @@ class ExpenseRepository
                 'tanggal' => \Carbon\Carbon::parse($item->tanggalPengeluaran)->translatedFormat('d M Y'),
                 'nominal' => (float) $item->nominal,
                 'status' => strtoupper($item->status), // 'PENDING', 'APPROVE', 'REJECT'
-                'foto_bukti' => asset('storage/' . $item->fotoBukti)
+                'foto_bukti' => SupabaseStorage::buildUrl($item->fotoBukti)
             ];
         });
 
@@ -59,15 +60,20 @@ class ExpenseRepository
         ];
     }
 
-    public function store($data, $file)
+    public function store($data, string $base64Image, string $ext)
     {
-        $path = $file->store('bukti_pengeluaran', 'public');
+        $imageData = base64_decode($base64Image);
+        if ($imageData === false) {
+            throw new \Exception("Data foto tidak valid.");
+        }
+        $filename = 'bukti_pengeluaran_' . time() . '_' . Auth::id() . '.' . $ext;
+        $fotoUrl = SupabaseStorage::upload('bukti_pengeluaran/' . $filename, $imageData, $ext);
 
         return $this->model->create([
             'user_id' => Auth::id(),
             'namaPengeluaran' => $data['namaPengeluaran'],
             'nominal' => $data['nominal'],
-            'fotoBukti' => $path,
+            'fotoBukti' => $fotoUrl,
             'tanggalPengeluaran' => now(),
             'status' => 'pending'
         ]);

@@ -54,7 +54,10 @@ class PaymentRepository
             'customer_details' => [
                 'first_name' => Auth::user()->namaLengkap,
                 'phone' => Auth::user()->noTelepon,
-            ]
+            ],
+            'callbacks' => [
+                'finish' => 'https://kpspam.finish/payment',
+            ],
         ];
 
         // Semua metode pembayaran akan ditampilkan oleh Midtrans

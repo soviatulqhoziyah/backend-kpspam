@@ -39,6 +39,7 @@ class UserRequest extends FormRequest
             'noTelepon' => 'required|string|max:20',
             'namaLengkap' => 'required|string|max:100',
             'meteranAwal' => 'nullable|integer|min:0',
+            'no_kk'      => 'nullable|string|size:16',
         ];
     }
 }

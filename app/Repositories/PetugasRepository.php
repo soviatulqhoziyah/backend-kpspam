@@ -24,7 +24,7 @@ class PetugasRepository
         $sisaKunjungan = $totalPelangganAktif - $rumahDikunjungi;
         $sisaKunjungan = $sisaKunjungan < 0 ? 0 : $sisaKunjungan;
 
-        $progres = $totalPelangganAktif > 0 ? round(($rumahDikunjungi / $totalPelangganAktif) * 100) : 0;
+        $progres = $totalPelangganAktif > 0 ? min(100, round(($rumahDikunjungi / $totalPelangganAktif) * 100)) : 0;
 
         $pemasukanTunai = Payment::where('user_id', $petugasId)
             ->where('metodePembayaran', 'tunai')
@@ -185,6 +185,66 @@ class PetugasRepository
                 'total_tunggakan' => (float) $totalTunggakan,
                 'daftar_tagihan' => $listTunggakan
             ]
+        ];
+    }
+
+    public function getRiwayatBulanan($month, $year, $wilayah = null, $status = null)
+    {
+        Carbon::setLocale('id');
+        $periode = Carbon::createFromDate($year, $month, 1)->translatedFormat('F Y');
+
+        // Query semua billing bulan ini untuk ringkasan (tanpa filter)
+        $allBillings = Billing::with('user')->where('periode', $periode)->get();
+        // Hitung pelanggan yang sudah ada pada akhir bulan tersebut (bukan count saat ini)
+        $endOfMonth = Carbon::createFromDate($year, $month, 1)->endOfMonth();
+        $totalPelangganAktif = User::where('role', 'pelanggan')
+            ->where('status', 'aktif')
+            ->where('created_at', '<=', $endOfMonth)
+            ->count();
+        $totalDicatat = $allBillings->count();
+        $totalTagihan = $allBillings->sum('totalTagihan');
+        $totalLunas   = $allBillings->where('status', 'lunas')->count();
+        $persen = $totalPelangganAktif > 0 ? min(100, round(($totalDicatat / $totalPelangganAktif) * 100)) : 0;
+
+        // Query billing untuk daftar (dengan filter)
+        $query = Billing::with('user')->where('periode', $periode);
+        if ($status && $status !== 'Semua') {
+            $query->where('status', strtolower($status));
+        }
+        if ($wilayah && $wilayah !== 'Semua') {
+            if ($wilayah === 'Talang Barat') {
+                $query->whereHas('user', fn($q) => $q->where('alamat', 'talbar'));
+            } else {
+                $query->whereHas('user', fn($q) => $q->where('alamat', '!=', 'talbar'));
+            }
+        }
+        $billings = $query->orderBy('created_at', 'asc')->get();
+
+        $daftar = $billings->map(function ($bill) {
+            return [
+                'id'               => $bill->id,
+                'nama_pelanggan'   => $bill->user->namaLengkap,
+                'wilayah'          => $bill->user->alamat === 'talbar' ? 'Talang Barat' : 'Talang Timur',
+                'meteran_lalu'     => (int) $bill->meteranLalu,
+                'meteran_sekarang' => (int) $bill->meteranSekarang,
+                'pemakaian'        => (int) $bill->jumlahPemakaian,
+                'total_tagihan'    => (float) $bill->totalTagihan,
+                'status'           => $bill->status,
+                'tanggal_dicatat'  => Carbon::parse($bill->created_at)->translatedFormat('d M Y'),
+                'foto_meteran'     => $bill->fotoMeteran ?? null,
+            ];
+        });
+
+        return [
+            'periode'   => $periode,
+            'ringkasan' => [
+                'total_dicatat'   => $totalDicatat,
+                'total_pelanggan' => $totalPelangganAktif,
+                'total_lunas'     => $totalLunas,
+                'total_tagihan'   => (float) $totalTagihan,
+                'persen_selesai'  => $persen,
+            ],
+            'daftar_billing' => $daftar,
         ];
     }
 

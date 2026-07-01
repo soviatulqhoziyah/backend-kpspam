@@ -41,9 +41,10 @@ class ExpenseController extends Controller
 
             // 2. Jika lolos (dia petugas), baru jalankan logika simpan
             $validated = $request->validated();
-            $file = $request->file('fotoBukti');
+            $base64Image = $request->input('foto_bukti_base64');
+            $ext = $request->input('foto_bukti_ext', 'jpg');
 
-            $expense = $this->expenseRepo->store($validated, $file);
+            $expense = $this->expenseRepo->store($validated, $base64Image, $ext);
 
             return $this->createdResponse($expense, "Pengeluaran berhasil dicatat, menunggu persetujuan admin");
         } catch (Exception $e) {

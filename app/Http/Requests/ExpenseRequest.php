@@ -21,9 +21,10 @@ class ExpenseRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'namaPengeluaran' => 'required|string|max:100',
-            'nominal' => 'required|numeric',
-            'fotoBukti' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+            'namaPengeluaran'  => 'required|string|max:100',
+            'nominal'          => 'required|numeric',
+            'foto_bukti_base64' => 'required|string',
+            'foto_bukti_ext'   => 'required|string|in:jpg,jpeg,png',
         ];
     }
 }

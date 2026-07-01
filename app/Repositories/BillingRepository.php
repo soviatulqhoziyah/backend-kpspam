@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Models\Billing;
 use App\Models\Tarif;
+use App\Services\SupabaseStorage;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -17,10 +18,55 @@ class BillingRepository
         $this->model = $model;
     }
 
-    public function storeBilling(array $data, $file)
+    public function getBillingBulanIni(int $userId): ?Billing
+    {
+        $now = Carbon::now();
+        return $this->model
+            ->where('user_id', $userId)
+            ->whereMonth('created_at', $now->month)
+            ->whereYear('created_at', $now->year)
+            ->first();
+    }
+
+    public function updateBilling(int $billingId, int $meteranSekarang, ?string $base64Image, ?string $ext): Billing
+    {
+        $billing = $this->model->findOrFail($billingId);
+
+        if ($billing->status !== 'menunggak') {
+            throw new Exception('Tagihan ini sudah lunas, tidak dapat diedit.');
+        }
+
+        $tarif = Tarif::where('status', 'aktif')->firstOrFail();
+        $meteranLalu = $billing->meteranLalu;
+
+        if ($meteranSekarang < $meteranLalu) {
+            throw new Exception("Angka meteran ($meteranSekarang) lebih kecil dari bulan lalu ($meteranLalu).");
+        }
+
+        $jumlahPemakaian = $meteranSekarang - $meteranLalu;
+        $totalTagihan = ($jumlahPemakaian * $tarif->hargaPerM) + $tarif->biayaBeban;
+
+        $updateData = [
+            'meteranSekarang' => $meteranSekarang,
+            'jumlahPemakaian' => $jumlahPemakaian,
+            'totalTagihan'    => $totalTagihan,
+        ];
+
+        if ($base64Image) {
+            $imageData = base64_decode($base64Image);
+            if ($imageData === false) throw new Exception('Data foto tidak valid.');
+            $filename = 'bukti_meteran_' . time() . '_' . $billing->user_id . '.' . $ext;
+            $updateData['fotoMeteran'] = SupabaseStorage::upload('bukti_meteran/' . $filename, $imageData, $ext);
+        }
+
+        $billing->update($updateData);
+        return $billing->fresh();
+    }
+
+    public function storeBilling(array $data, string $base64Image, string $ext)
     {
         // Gunakan Transaction agar jika ada error di tengah jalan, database tetap bersih
-        return DB::transaction(function () use ($data, $file) {
+        return DB::transaction(function () use ($data, $base64Image, $ext) {
 
             // 1. Ambil Tarif Aktif
             $tarif = Tarif::where('status', 'aktif')->first();
@@ -79,12 +125,13 @@ class BillingRepository
             $jumlahPemakaian = $meteranSekarang - $meteranLalu;
             $totalTagihan = ($jumlahPemakaian * $tarif->hargaPerM) + $tarif->biayaBeban;
 
-            // 8. Proses Upload Foto (Simpan path ke variabel)
-            try {
-                $path = $file->store('bukti_meteran', 'public');
-            } catch (Exception $e) {
-                throw new Exception("Gagal mengunggah foto. Silakan coba lagi.");
+            // 8. Decode base64 dan upload ke Supabase
+            $imageData = base64_decode($base64Image);
+            if ($imageData === false) {
+                throw new Exception("Data foto tidak valid.");
             }
+            $filename = 'bukti_meteran_' . time() . '_' . $data['user_id'] . '.' . $ext;
+            $fotoUrl = SupabaseStorage::upload('bukti_meteran/' . $filename, $imageData, $ext);
 
             // 9. Simpan ke Database
             return $this->model->create([
@@ -94,7 +141,7 @@ class BillingRepository
                 'meteranLalu'     => $meteranLalu,
                 'meteranSekarang' => $meteranSekarang,
                 'jumlahPemakaian' => $jumlahPemakaian,
-                'fotoMeteran'     => $path,
+                'fotoMeteran'     => $fotoUrl,
                 'totalTagihan'    => $totalTagihan,
                 'status'          => 'menunggak'
             ]);

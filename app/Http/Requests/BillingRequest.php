@@ -22,12 +22,13 @@ class BillingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id' => 'required|exists:users,id',
-            'periode' => 'required',
-            'meteranSekarang' => 'required|integer|min:0',
-            'fotoMeteran' => 'required|image|mimes:jpeg,png,jpg|max:10240',
-            'jumlahPemakaian' => 'integer',
-            'totalTagihan' => 'numeric',
+            'user_id'              => 'required|exists:users,id',
+            'periode'              => 'required',
+            'meteranSekarang'      => 'required|integer|min:0',
+            'foto_meteran_base64'  => 'required|string',
+            'foto_meteran_ext'     => 'required|string|in:jpg,jpeg,png',
+            'jumlahPemakaian'      => 'integer',
+            'totalTagihan'         => 'numeric',
         ];
     }
 }

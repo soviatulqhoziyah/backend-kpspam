@@ -55,6 +55,20 @@ class PetugasDashboardController extends Controller
         }
     }
 
+    public function getRiwayatBulanan(Request $request)
+    {
+        try {
+            $month   = $request->get('month', now()->month);
+            $year    = $request->get('year', now()->year);
+            $wilayah = $request->get('wilayah');
+            $status  = $request->get('status');
+            $data    = $this->petugasRepo->getRiwayatBulanan($month, $year, $wilayah, $status);
+            return $this->successResponse($data, "Riwayat bulanan berhasil dimuat");
+        } catch (Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
     public function profile()
     {
         try {

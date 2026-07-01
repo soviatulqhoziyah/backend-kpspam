@@ -6,6 +6,8 @@ use App\Models\Payment;
 use App\Models\Expense;
 use App\Models\Complaint;
 use App\Models\Billing;
+use App\Models\User;
+use App\Services\SupabaseStorage;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -234,6 +236,43 @@ class AdminRepository
                 return $item;
             });
 
+        // Pelanggan aktif yang belum dicatat meter bulan ini
+        \Carbon\Carbon::setLocale('id');
+        $periode = \Carbon\Carbon::createFromDate($year, $month, 1)->translatedFormat('F Y');
+        $belumDicatat = User::where('role', 'pelanggan')
+            ->where('status', 'aktif')
+            ->whereDoesntHave('billings', fn($q) => $q->where('periode', $periode))
+            ->get()
+            ->map(fn($user) => [
+                'id'         => $user->id,
+                'id_display' => 'PLG-' . str_pad($user->id, 3, '0', STR_PAD_LEFT),
+                'nama'       => $user->namaLengkap,
+                'wilayah'    => $user->alamat === 'talbar' ? 'Talang Barat' : 'Talang Timur',
+                'no_telepon' => $user->noTelepon ?? '-',
+            ])
+            ->values();
+
+        // Pelanggan dengan tunggakan >= 3 bulan (tidak terikat filter bulan/tahun)
+        $tunggakanPelanggan = User::where('role', 'pelanggan')
+            ->withCount(['billings' => fn($q) => $q->where('status', 'menunggak')])
+            ->having('billings_count', '>=', 3)
+            ->get()
+            ->map(function ($user) {
+                $billings = $user->billings()->where('status', 'menunggak')->orderBy('periode')->get();
+                return [
+                    'id'               => $user->id,
+                    'id_display'       => 'PLG-' . str_pad($user->id, 3, '0', STR_PAD_LEFT),
+                    'nama'             => $user->namaLengkap,
+                    'wilayah'          => $user->alamat === 'talbar' ? 'Talang Barat' : 'Talang Timur',
+                    'no_telepon'       => $user->noTelepon,
+                    'jumlah_tunggakan' => $billings->count(),
+                    'total_tunggakan'  => (float) $billings->sum('totalTagihan'),
+                    'periode_list'     => $billings->pluck('periode')->toArray(),
+                ];
+            })
+            ->sortByDesc('jumlah_tunggakan')
+            ->values();
+
         return [
             'stats' => [
                 'pemasukan_kotor' => (float) $pemasukanKotor,
@@ -244,9 +283,11 @@ class AdminRepository
                 'non_tunai' => (float) $pemasukanNonTunai,
                 'tunai' => (float) $pemasukanTunai,
             ],
-            'daftar_setoran'   => $setoranPetugas,
-            'riwayat_setoran'  => $riwayatSetoran,
-            'riwayat_transaksi' => $riwayatPembayaran
+            'daftar_setoran'     => $setoranPetugas,
+            'riwayat_setoran'    => $riwayatSetoran,
+            'riwayat_transaksi'  => $riwayatPembayaran,
+            'tunggakan_pelanggan'=> $tunggakanPelanggan,
+            'belum_dicatat'      => $belumDicatat,
         ];
     }
 
@@ -295,7 +336,7 @@ class AdminRepository
                 'inisial' => collect(explode(' ', $nama))->map(fn($n) => $n[0])->take(2)->join(''),
                 'kategori' => $item->kategori ?? 'Lainnya',
                 'deskripsi_singkat' => \Illuminate\Support\Str::limit($item->deskripsi, 30),
-                'foto_bukti' => asset('storage/' . $item->fotoBukti),
+                'foto_bukti' => SupabaseStorage::buildUrl($item->fotoBukti),
                 'status' => strtoupper($item->status),
             ];
         });
@@ -343,7 +384,7 @@ class AdminRepository
                 'inisial' => collect(explode(' ', $nama))->map(fn($n) => $n[0])->take(2)->join(''),
                 'deskripsi' => $item->namaPengeluaran,
                 'nominal' => (float) $item->nominal,
-                'foto_bukti' => asset('storage/' . $item->fotoBukti),
+                'foto_bukti' => SupabaseStorage::buildUrl($item->fotoBukti),
                 'status' => $item->status,
                 'status_label' => $item->status == 'approve' ? 'Disetujui' : ($item->status == 'reject' ? 'Ditolak' : 'Pending')
             ];

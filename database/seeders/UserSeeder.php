@@ -27,12 +27,25 @@ class UserSeeder extends Seeder
         ]);
 
         \App\Models\User::create([
-            'username' => 'warga1', 
-            'password' => bcrypt('password'), 
-            'role' => 'pelanggan', 
-            'namaLengkap' => 'Bapak Ahmad', 
-            'noTelepon' => '08123456712', 
-            'alamat' => 'talbar'
+            'username' => 'warga1',
+            'password' => bcrypt('password'),
+            'role' => 'pelanggan',
+            'namaLengkap' => 'Bapak Ahmad',
+            'noTelepon' => '08123456712',
+            'alamat' => 'talbar',
+            'no_kk' => '1234567890123456',
+            'status' => 'aktif',
+        ]);
+
+        \App\Models\User::create([
+            'username' => 'warga_pending',
+            'password' => bcrypt('password'),
+            'role' => 'pelanggan',
+            'namaLengkap' => 'Siti Pendaftar',
+            'noTelepon' => '08199998888',
+            'alamat' => 'taltim',
+            'no_kk' => '6543210987654321',
+            'status' => 'pending',
         ]);
     }
 }

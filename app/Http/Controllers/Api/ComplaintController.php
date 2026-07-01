@@ -38,9 +38,10 @@ class ComplaintController extends Controller {
     public function store(ComplaintRequest $request) {
         try {
             $validated = $request->validated();
-            $file = $request->file('fotoBukti');
-            
-            $complaint = $this->complaintRepo->store($validated, $file);
+            $base64Image = $request->input('foto_bukti_base64');
+            $ext = $request->input('foto_bukti_ext', 'jpg');
+
+            $complaint = $this->complaintRepo->store($validated, $base64Image, $ext);
             return $this->createdResponse($complaint, "Pengaduan berhasil terkirim");
         } catch (Exception $e) {
             return $this->errorResponse($e->getMessage());
