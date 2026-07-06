@@ -29,7 +29,16 @@ class PaymentRepository
             ->where('status', '!=', 'lunas');
 
         if (!$skipUserCheck) {
-            $query->where('user_id', Auth::id());
+            // Izinkan checkout billing dari akun lama yang terhubung via no_kk (piutang)
+            $currentUser = \App\Models\User::find(Auth::id());
+            $allowedUserIds = collect([Auth::id()]);
+            if ($currentUser && $currentUser->no_kk) {
+                $linkedIds = \App\Models\User::where('no_kk', $currentUser->no_kk)
+                    ->where('id', '!=', Auth::id())
+                    ->pluck('id');
+                $allowedUserIds = $allowedUserIds->merge($linkedIds);
+            }
+            $query->whereIn('user_id', $allowedUserIds);
         }
 
         $billings = $query->get();

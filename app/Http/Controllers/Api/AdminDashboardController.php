@@ -127,13 +127,13 @@ class AdminDashboardController extends Controller
 
         // Baris 3 – kosong pemisah
 
-        // Baris 4 – Header kolom
-        $headers = ['NO.', 'BULAN', 'TOTAL PEMASUKAN', 'TOTAL PENGELUARAN', 'SALDO BULANAN'];
+        // Baris 4 – Header kolom (6 kolom: tambah PEMASUKAN PIUTANG)
+        $headers = ['NO.', 'BULAN', 'TOTAL PEMASUKAN', 'PEMASUKAN PIUTANG', 'TOTAL PENGELUARAN', 'SALDO BULANAN'];
         foreach ($headers as $i => $label) {
             $cell = chr(65 + $i) . '4';
             $sheet->setCellValue($cell, $label);
         }
-        $sheet->getStyle('A4:E4')->applyFromArray([
+        $sheet->getStyle('A4:F4')->applyFromArray([
             'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1E3A8A']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
@@ -145,26 +145,32 @@ class AdminDashboardController extends Controller
         foreach ($grafik as $idx => $item) {
             $namaBulan = $bulanNama[$idx + 1] ?? $item['bulan'];
             $saldoBulanan = $item['pemasukan'] - $item['pengeluaran'];
+            $piutangBulan = $item['pemasukan_piutang'] ?? 0;
 
             $sheet->setCellValue("A{$rowNum}", $idx + 1);
             $sheet->setCellValue("B{$rowNum}", $namaBulan);
             $sheet->setCellValue("C{$rowNum}", $item['pemasukan']);
-            $sheet->setCellValue("D{$rowNum}", $item['pengeluaran']);
-            $sheet->setCellValue("E{$rowNum}", $saldoBulanan);
+            $sheet->setCellValue("D{$rowNum}", $piutangBulan);
+            $sheet->setCellValue("E{$rowNum}", $item['pengeluaran']);
+            $sheet->setCellValue("F{$rowNum}", $saldoBulanan);
 
             $numFmt = '"Rp "#,##0';
             $sheet->getStyle("C{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
             $sheet->getStyle("D{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
+            if ($piutangBulan > 0) {
+                $sheet->getStyle("D{$rowNum}")->getFont()->getColor()->setRGB('D97706');
+            }
             $sheet->getStyle("E{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
+            $sheet->getStyle("F{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
 
             // Warna saldo: merah jika negatif
             if ($saldoBulanan < 0) {
-                $sheet->getStyle("E{$rowNum}")->getFont()->getColor()->setRGB('DC2626');
+                $sheet->getStyle("F{$rowNum}")->getFont()->getColor()->setRGB('DC2626');
             }
 
             // Baris zebra
             if ($idx % 2 === 0) {
-                $sheet->getStyle("A{$rowNum}:E{$rowNum}")->applyFromArray([
+                $sheet->getStyle("A{$rowNum}:F{$rowNum}")->applyFromArray([
                     'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F8FAFC']],
                 ]);
             }
@@ -186,28 +192,59 @@ class AdminDashboardController extends Controller
         $sheet->setCellValue("A{$rowNum}", 'TOTAL PEMASUKAN TAHUNAN');
         $sheet->setCellValue("C{$rowNum}", $ringkasan['total_pemasukan_kotor']);
         $sheet->getStyle("C{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
-        $sheet->getStyle("A{$rowNum}:E{$rowNum}")->applyFromArray($summaryStyle);
+        $sheet->getStyle("A{$rowNum}:F{$rowNum}")->applyFromArray($summaryStyle);
+        $rowNum++;
+
+        $sheet->mergeCells("A{$rowNum}:B{$rowNum}");
+        $sheet->setCellValue("A{$rowNum}", 'TERMASUK PEMASUKAN PIUTANG');
+        $sheet->setCellValue("D{$rowNum}", $ringkasan['total_pemasukan_piutang']);
+        $sheet->getStyle("D{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
+        $sheet->getStyle("D{$rowNum}")->getFont()->getColor()->setRGB('D97706');
+        $sheet->getStyle("A{$rowNum}:F{$rowNum}")->applyFromArray([
+            'font' => ['bold' => true, 'italic' => true],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FEF9EE']],
+        ]);
         $rowNum++;
 
         $sheet->mergeCells("A{$rowNum}:B{$rowNum}");
         $sheet->setCellValue("A{$rowNum}", 'TOTAL PENGELUARAN TAHUNAN');
-        $sheet->setCellValue("D{$rowNum}", $ringkasan['total_pengeluaran_kotor']);
-        $sheet->getStyle("D{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
-        $sheet->getStyle("A{$rowNum}:E{$rowNum}")->applyFromArray($summaryStyle);
+        $sheet->setCellValue("E{$rowNum}", $ringkasan['total_pengeluaran_kotor']);
+        $sheet->getStyle("E{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
+        $sheet->getStyle("A{$rowNum}:F{$rowNum}")->applyFromArray($summaryStyle);
         $rowNum++;
 
         $saldoColor = $ringkasan['saldo_tersisa'] >= 0 ? 'DCFCE7' : 'FEE2E2';
         $sheet->mergeCells("A{$rowNum}:B{$rowNum}");
         $sheet->setCellValue("A{$rowNum}", 'SALDO BERSIH');
-        $sheet->setCellValue("E{$rowNum}", $ringkasan['saldo_tersisa']);
-        $sheet->getStyle("E{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
-        $sheet->getStyle("A{$rowNum}:E{$rowNum}")->applyFromArray([
+        $sheet->setCellValue("F{$rowNum}", $ringkasan['saldo_tersisa']);
+        $sheet->getStyle("F{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
+        $sheet->getStyle("A{$rowNum}:F{$rowNum}")->applyFromArray([
             'font' => ['bold' => true, 'size' => 12],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $saldoColor]],
         ]);
+        $rowNum += 2;
+
+        // Saldo piutang outstanding (tagihan menunggak belum lunas)
+        $sheet->mergeCells("A{$rowNum}:B{$rowNum}");
+        $sheet->setCellValue("A{$rowNum}", 'SALDO PIUTANG (BELUM LUNAS)');
+        $sheet->setCellValue("C{$rowNum}", $ringkasan['saldo_piutang']);
+        $sheet->getStyle("C{$rowNum}")->getNumberFormat()->setFormatCode($numFmt);
+        $sheet->getStyle("C{$rowNum}")->getFont()->getColor()->setRGB('D97706');
+        $sheet->getStyle("A{$rowNum}:F{$rowNum}")->applyFromArray([
+            'font' => ['bold' => true, 'size' => 11],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FEF3C7']],
+        ]);
+        $rowNum++;
+
+        $sheet->mergeCells("A{$rowNum}:F{$rowNum}");
+        $sheet->setCellValue("A{$rowNum}", 'Catatan: Saldo piutang adalah total tagihan belum lunas dari seluruh pelanggan (semua periode). Bukan bagian dari arus kas yang sudah diterima.');
+        $sheet->getStyle("A{$rowNum}")->applyFromArray([
+            'font'      => ['italic' => true, 'size' => 9, 'color' => ['rgb' => '64748B']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT],
+        ]);
 
         // Auto-size semua kolom
-        foreach (range('A', 'E') as $col) {
+        foreach (range('A', 'F') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 

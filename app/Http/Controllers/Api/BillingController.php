@@ -81,15 +81,31 @@ class BillingController extends Controller
             // 3. Panggil Repository
             $billing = $this->billingRepo->storeBilling($validated, $base64Image, $ext);
 
-            // 4. Ambil SEMUA tagihan yang masih menunggak untuk user tersebut
+            // 4. Ambil tagihan menunggak SELAIN yang baru dibuat (hindari duplikat)
             $unpaidBillings = \App\Models\Billing::where('user_id', $validated['user_id'])
-                                              ->where('status', 'menunggak')
-                                              ->orderBy('periode', 'asc') // Urutkan dari tagihan terlama
-                                              ->get();
+                ->where('status', 'menunggak')
+                ->where('id', '!=', $billing->id)
+                ->orderBy('id', 'asc')
+                ->get()
+                ->map(fn($b) => [
+                    'id'               => $b->id,
+                    'periode'          => $b->periode,
+                    'total_tagihan'    => (float) $b->totalTagihan,
+                    'status'           => $b->status,
+                ]);
 
             return $this->createdResponse([
-                'new_billing' => $billing,
-                'unpaid_billings' => $unpaidBillings
+                'new_billing' => [
+                    'id'               => $billing->id,
+                    'periode'          => $billing->periode,
+                    'meteran_lalu'     => $billing->meteranLalu,
+                    'meteran_sekarang' => $billing->meteranSekarang,
+                    'jumlah_pemakaian' => $billing->jumlahPemakaian,
+                    'total_tagihan'    => (float) $billing->totalTagihan,
+                    'foto_meteran'     => $billing->fotoMeteran,
+                    'status'           => $billing->status,
+                ],
+                'unpaid_billings' => $unpaidBillings,
             ], "Tagihan berhasil diterbitkan");
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());

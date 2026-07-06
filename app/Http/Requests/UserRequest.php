@@ -25,11 +25,11 @@ class UserRequest extends FormRequest
         $userId = $this->route('id');
 
         return [
-            // Jika POST (Store), username wajib unik. 
+            // Jika POST (Store), username wajib unik.
             // Jika PUT (Update), username unik tapi abaikan ID user saat ini.
             'username' => 'required|unique:users,username,' . $userId,
 
-            // Jika POST (Store), password wajib. 
+            // Jika POST (Store), password wajib.
             // Jika PUT (Update), password boleh kosong (nullable).
             'password' => $this->isMethod('post') ? 'required|min:6' : 'nullable|min:6',
 
@@ -40,6 +40,26 @@ class UserRequest extends FormRequest
             'namaLengkap' => 'required|string|max:100',
             'meteranAwal' => 'nullable|integer|min:0',
             'no_kk'      => 'nullable|string|size:16',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'username.required' => 'Username wajib diisi.',
+            'username.unique'   => 'Username sudah digunakan, coba username lain.',
+            'password.required' => 'Password wajib diisi.',
+            'password.min'      => 'Password minimal 6 karakter.',
+            'role.required'     => 'Role wajib dipilih.',
+            'role.in'           => 'Role tidak valid.',
+            'alamat.required'   => 'Wilayah wajib dipilih.',
+            'alamat.in'         => 'Wilayah tidak valid.',
+            'noTelepon.required'=> 'Nomor telepon wajib diisi.',
+            'namaLengkap.required' => 'Nama lengkap wajib diisi.',
+            'namaLengkap.max'   => 'Nama lengkap maksimal 100 karakter.',
+            'meteranAwal.integer' => 'Meter awal harus berupa angka.',
+            'meteranAwal.min'   => 'Meter awal tidak boleh negatif.',
+            'no_kk.size'        => 'Nomor KK harus 16 digit.',
         ];
     }
 }

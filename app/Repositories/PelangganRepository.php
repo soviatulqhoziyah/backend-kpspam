@@ -14,9 +14,19 @@ class PelangganRepository
     {
         Carbon::setLocale('id');
 
+        // Sertakan akun lama dengan no_kk yang sama agar piutang ikut tampil
+        $currentUser = \App\Models\User::find($userId);
+        $relatedUserIds = collect([$userId]);
+        if ($currentUser && $currentUser->no_kk) {
+            $oldIds = \App\Models\User::where('no_kk', $currentUser->no_kk)
+                ->where('id', '!=', $userId)
+                ->pluck('id');
+            $relatedUserIds = $relatedUserIds->merge($oldIds);
+        }
+
         // Auto-sync billing yang punya midtrans_order_id tapi belum lunas
         // Ini memastikan status diperbarui meski WebView sudah ditutup sebelumnya
-        $pendingMidtrans = Billing::where('user_id', $userId)
+        $pendingMidtrans = Billing::whereIn('user_id', $relatedUserIds)
             ->where('status', 'menunggak')
             ->whereNotNull('midtrans_order_id')
             ->get();
@@ -29,45 +39,50 @@ class PelangganRepository
                 $txStatus = $statusResponse->transaction_status ?? '';
 
                 if ($txStatus === 'settlement' || $txStatus === 'capture') {
-                    \Illuminate\Support\Facades\DB::transaction(function () use ($bill) {
+                    // Pastikan payment belum pernah dibuat untuk billing ini
+                    $sudahAda = Payment::where('billing_id', $bill->id)->exists();
+                    if (!$sudahAda) {
+                        \Illuminate\Support\Facades\DB::transaction(function () use ($bill) {
+                            $bill->update(['status' => 'lunas']);
+                            Payment::create([
+                                'billing_id'         => $bill->id,
+                                'user_id'            => $bill->user_id,
+                                'metodePembayaran'   => 'non_tunai',
+                                'nominalPembayaran'  => $bill->totalTagihan,
+                                'tanggalBayar'       => now(),
+                            ]);
+                        });
+                    } else {
+                        // Payment sudah ada tapi billing belum lunas — sinkronkan statusnya saja
                         $bill->update(['status' => 'lunas']);
-                        Payment::create([
-                            'billing_id'         => $bill->id,
-                            'user_id'            => $bill->user_id,
-                            'metodePembayaran'   => 'non_tunai',
-                            'nominalPembayaran'  => $bill->totalTagihan,
-                            'tanggalBayar'       => now(),
-                        ]);
-                    });
+                    }
                 }
             } catch (\Exception) {
                 // Abaikan error — mungkin transaksi belum ada di Midtrans
             }
         }
 
-        // 1. Ambil semua tagihan menunggak, urutkan dari ID terkecil (Paling Lama)
-        $billings = Billing::where('user_id', $userId)
+        // Ambil semua tagihan menunggak (akun ini + akun lama no_kk sama), urutkan dari ID terkecil (Paling Lama)
+        $billings = Billing::whereIn('user_id', $relatedUserIds)
             ->where('status', 'menunggak')
             ->orderBy('id', 'asc')
             ->get();
 
         // 2. Mapping data agar sesuai dengan UI
-        $listTagihan = $billings->map(function ($bill) {
-            // Asumsi jatuh tempo adalah tanggal 20 pada bulan tagihan tersebut dibuat
+        $listTagihan = $billings->map(function ($bill) use ($userId) {
             $dueDate = Carbon::parse($bill->created_at)->day(20);
             $now = Carbon::now();
-
-            // Hitung selisih hari jika sudah melewati jatuh tempo
             $isOverdue = $now->greaterThan($dueDate);
-            $daysOverdue = $isOverdue ? intval($dueDate->diffInDays($now)) : 0;
+            $isPiutang = $bill->user_id !== $userId;
 
             return [
-                'id' => $bill->id,
-                'periode' => $bill->periode,
-                'nominal' => (float) $bill->totalTagihan,
-                'jatuh_tempo' => "Jatuh tempo: 20 " . $bill->periode,
-                'keterangan_telat' => $isOverdue ? "Segera bayar!" : "Tagihan Berjalan",
-                'is_overdue' => $isOverdue
+                'id'               => $bill->id,
+                'periode'          => $bill->periode,
+                'nominal'          => (float) $bill->totalTagihan,
+                'jatuh_tempo'      => "Jatuh tempo: 20 " . $bill->periode,
+                'keterangan_telat' => $isPiutang ? "Piutang Tagihan Lama" : ($isOverdue ? "Segera bayar!" : "Tagihan Berjalan"),
+                'is_overdue'       => $isOverdue || $isPiutang,
+                'is_piutang'       => $isPiutang,
             ];
         });
 
@@ -88,10 +103,20 @@ class PelangganRepository
     {
         \Carbon\Carbon::setLocale('id');
 
-        // MENCARI: Ambil data payment yang mana BILLING-nya punya si user ini
+        // Sertakan billing dari akun lama dengan no_kk yang sama (piutang yang sudah dilunasi)
+        $currentUser = \App\Models\User::find($userId);
+        $relatedUserIds = collect([$userId]);
+
+        if ($currentUser && $currentUser->no_kk) {
+            $oldIds = \App\Models\User::where('no_kk', $currentUser->no_kk)
+                ->where('id', '!=', $userId)
+                ->pluck('id');
+            $relatedUserIds = $relatedUserIds->merge($oldIds);
+        }
+
         $query = \App\Models\Payment::with('billing')
-            ->whereHas('billing', function ($q) use ($userId) {
-                $q->where('user_id', $userId); // Filter berdasarkan pemilik tagihan
+            ->whereHas('billing', function ($q) use ($relatedUserIds) {
+                $q->whereIn('user_id', $relatedUserIds);
             });
 
         if ($request->has('search')) {
@@ -103,8 +128,9 @@ class PelangganRepository
 
         $payments = $query->latest('tanggalBayar')->get();
 
-        return $payments->map(function ($pay) {
+        return $payments->map(function ($pay) use ($userId) {
             $billing = $pay->billing;
+            $isPiutang = $billing && $billing->user_id !== $userId;
             return [
                 'id_payment'             => $pay->id,
                 'periode'                => $billing->periode,
@@ -112,11 +138,13 @@ class PelangganRepository
                 'total_bayar'            => (float) $pay->nominalPembayaran,
                 'status'                 => 'LUNAS',
                 'metode'                 => $pay->metodePembayaran === 'tunai' ? 'Tunai' : 'Non-Tunai (QRIS)',
-                'meteran_lalu'           => (int) $billing->meteranLalu,
-                'meteran_sekarang'       => (int) $billing->meteranSekarang,
-                'pemakaian'              => (int) $billing->jumlahPemakaian,
-                'foto_meteran'           => SupabaseStorage::buildUrl($billing->fotoMeteran),
+                'meteran_lalu'           => (int) ($billing->meteranLalu ?? 0),
+                'meteran_sekarang'       => (int) ($billing->meteranSekarang ?? 0),
+                'pemakaian'              => (int) ($billing->jumlahPemakaian ?? 0),
+                'foto_meteran'           => $billing->fotoMeteran ? SupabaseStorage::buildUrl($billing->fotoMeteran) : null,
                 'download_url'           => null,
+                'is_piutang'             => $isPiutang,
+                'keterangan'             => $isPiutang ? 'Pelunasan Piutang' : null,
             ];
         });
     }

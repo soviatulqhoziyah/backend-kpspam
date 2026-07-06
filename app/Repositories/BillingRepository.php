@@ -20,11 +20,11 @@ class BillingRepository
 
     public function getBillingBulanIni(int $userId): ?Billing
     {
-        $now = Carbon::now();
+        Carbon::setLocale('id');
+        $periode = Carbon::now()->translatedFormat('F Y');
         return $this->model
             ->where('user_id', $userId)
-            ->whereMonth('created_at', $now->month)
-            ->whereYear('created_at', $now->year)
+            ->where('periode', $periode)
             ->first();
     }
 
@@ -36,7 +36,10 @@ class BillingRepository
             throw new Exception('Tagihan ini sudah lunas, tidak dapat diedit.');
         }
 
-        $tarif = Tarif::where('status', 'aktif')->firstOrFail();
+        // Gunakan tarif asli saat billing dibuat, bukan tarif aktif sekarang
+        $tarif = Tarif::find($billing->tarif_id);
+        if (!$tarif) throw new Exception('Tarif untuk billing ini tidak ditemukan.');
+
         $meteranLalu = $billing->meteranLalu;
 
         if ($meteranSekarang < $meteranLalu) {
@@ -44,7 +47,7 @@ class BillingRepository
         }
 
         $jumlahPemakaian = $meteranSekarang - $meteranLalu;
-        $totalTagihan = ($jumlahPemakaian * $tarif->hargaPerM) + $tarif->biayaBeban;
+        $totalTagihan    = ($jumlahPemakaian * $tarif->hargaPerM) + $tarif->biayaBeban;
 
         $updateData = [
             'meteranSekarang' => $meteranSekarang,
@@ -55,11 +58,15 @@ class BillingRepository
         if ($base64Image) {
             $imageData = base64_decode($base64Image);
             if ($imageData === false) throw new Exception('Data foto tidak valid.');
-            $filename = 'bukti_meteran_' . time() . '_' . $billing->user_id . '.' . $ext;
-            $updateData['fotoMeteran'] = SupabaseStorage::upload('bukti_meteran/' . $filename, $imageData, $ext);
+            $filename    = 'bukti_meteran_' . time() . '_' . $billing->user_id . '.' . $ext;
+            $fotoUrl     = SupabaseStorage::upload('bukti_meteran/' . $filename, $imageData, $ext);
+            $updateData['fotoMeteran'] = $fotoUrl;
         }
 
-        $billing->update($updateData);
+        DB::transaction(function () use ($billing, $updateData) {
+            $billing->update($updateData);
+        });
+
         return $billing->fresh();
     }
 

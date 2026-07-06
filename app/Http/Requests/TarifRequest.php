@@ -23,7 +23,7 @@ class TarifRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'hargaPerM' => 'required|numeric|min:0',
+            'hargaPerM' => 'required|numeric|min:1',
             'biayaBeban' => 'required|numeric|min:0',
             'status' => 'required|in:aktif,tidak aktif',
         ];

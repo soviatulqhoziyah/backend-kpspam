@@ -84,6 +84,9 @@ Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
         Route::get('/users/pending', [UserController::class, 'getPendingUsers']);
         Route::post('/users/{id}/approve', [UserController::class, 'approve']);
         Route::post('/users/{id}/reject', [UserController::class, 'reject']);
+        Route::post('/users/{id}/tagih-piutang', [UserController::class, 'tagihPiutang']);
+        Route::post('/users/{id}/konfirmasi-tunai-piutang', [UserController::class, 'konfirmasiTunaiPiutang']);
+        Route::post('/payments/sync-piutang', [PaymentController::class, 'syncMidtrans']);
         Route::get('/transaction-detail', [AdminDashboardController::class, 'monthlyDetail']);
         Route::get('/transaction-detail/export', [AdminDashboardController::class, 'exportRiwayatPembayaran']);
         Route::post('/confirm-setoran/{petugasId}', [AdminDashboardController::class, 'confirmPayment']);

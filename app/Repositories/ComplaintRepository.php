@@ -44,6 +44,15 @@ class ComplaintRepository {
     // Update status pengaduan (oleh Admin)
     public function updateStatus($id, $status) {
         $complaint = $this->model->findOrFail($id);
+
+        // Blokir pembalikan status: selesai tidak bisa kembali ke proses/belumProses
+        $current = $complaint->status;
+        $invalid = ($current === 'selesai') ||
+                   ($current === 'proses' && $status === 'belumProses');
+        if ($invalid) {
+            throw new \Exception("Status tidak dapat dikembalikan dari '{$current}' ke '{$status}'.");
+        }
+
         $complaint->update(['status' => $status]);
         return $complaint;
     }

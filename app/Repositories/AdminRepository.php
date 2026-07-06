@@ -20,24 +20,46 @@ class AdminRepository
         $totalPengeluaran = Expense::whereYear('tanggalPengeluaran', $year)->where('status', 'approve')->sum('nominal');
         $saldoTersisa = $totalPemasukan - $totalPengeluaran;
 
+        $saldoPiutang = Billing::where('status', 'menunggak')->whereYear('created_at', $year)->sum('totalTagihan');
+
         $monthlyData = [];
+        $totalPemasukanPiutang = 0.0;
         for ($m = 1; $m <= 12; $m++) {
             $pemasukanBulan = Payment::whereYear('tanggalBayar', $year)->whereMonth('tanggalBayar', $m)->sum('nominalPembayaran');
             $pengeluaranBulan = Expense::whereYear('tanggalPengeluaran', $year)->whereMonth('tanggalPengeluaran', $m)->where('status', 'approve')->sum('nominal');
 
+            // Piutang bulan ini: payment untuk billing dari bulan/tahun sebelumnya
+            $pemasukanPiutangBulan = (float) Payment::whereYear('tanggalBayar', $year)
+                ->whereMonth('tanggalBayar', $m)
+                ->whereHas('billing', function ($q) use ($m, $year) {
+                    $q->where(function ($inner) use ($m, $year) {
+                        $inner->whereYear('created_at', '<', $year)
+                            ->orWhere(function ($q2) use ($m, $year) {
+                                $q2->whereYear('created_at', $year)
+                                   ->whereMonth('created_at', '<', $m);
+                            });
+                    });
+                })
+                ->sum('nominalPembayaran');
+
+            $totalPemasukanPiutang += $pemasukanPiutangBulan;
+
             $monthlyData[] = [
-                'bulan' => Carbon::create()->month($m)->translatedFormat('M'),
-                'pemasukan' => (float) $pemasukanBulan,
-                'pengeluaran' => (float) $pengeluaranBulan,
+                'bulan'             => Carbon::create()->month($m)->translatedFormat('M'),
+                'pemasukan'         => (float) $pemasukanBulan,
+                'pemasukan_piutang' => $pemasukanPiutangBulan,
+                'pengeluaran'       => (float) $pengeluaranBulan,
             ];
         }
 
         return [
             'tahun' => $year,
             'ringkasan' => [
-                'total_pemasukan_kotor' => (float) $totalPemasukan,
+                'total_pemasukan_kotor'   => (float) $totalPemasukan,
+                'total_pemasukan_piutang' => (float) $totalPemasukanPiutang,
                 'total_pengeluaran_kotor' => (float) $totalPengeluaran,
-                'saldo_tersisa' => (float) $saldoTersisa,
+                'saldo_tersisa'           => (float) $saldoTersisa,
+                'saldo_piutang'           => (float) $saldoPiutang,
             ],
             'grafik_bulanan' => $monthlyData
         ];
@@ -237,10 +259,14 @@ class AdminRepository
             });
 
         // Pelanggan aktif yang belum dicatat meter bulan ini
+        // Hanya pelanggan yang sudah terdaftar sebelum/pada akhir bulan yang dipilih
         \Carbon\Carbon::setLocale('id');
-        $periode = \Carbon\Carbon::createFromDate($year, $month, 1)->translatedFormat('F Y');
+        $periodeDate = \Carbon\Carbon::createFromDate($year, $month, 1);
+        $periode = $periodeDate->translatedFormat('F Y');
+        $endOfMonth = $periodeDate->copy()->endOfMonth();
         $belumDicatat = User::where('role', 'pelanggan')
             ->where('status', 'aktif')
+            ->where('created_at', '<=', $endOfMonth)
             ->whereDoesntHave('billings', fn($q) => $q->where('periode', $periode))
             ->get()
             ->map(fn($user) => [

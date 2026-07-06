@@ -27,6 +27,22 @@ class RegisterController extends Controller
                 'no_kk'          => 'required|string|size:16',
                 'foto_kk_base64' => 'required|string',
                 'foto_kk_ext'    => 'required|string|in:jpg,jpeg,png',
+            ], [
+                'namaLengkap.required'    => 'Nama lengkap wajib diisi.',
+                'namaLengkap.max'         => 'Nama lengkap maksimal 100 karakter.',
+                'username.required'       => 'Username wajib diisi.',
+                'username.unique'         => 'Username sudah digunakan, coba username lain.',
+                'password.required'       => 'Password wajib diisi.',
+                'password.min'            => 'Password minimal 6 karakter.',
+                'noTelepon.required'      => 'Nomor telepon wajib diisi.',
+                'noTelepon.max'           => 'Nomor telepon maksimal 20 karakter.',
+                'alamat.required'         => 'Wilayah wajib dipilih.',
+                'alamat.in'               => 'Wilayah tidak valid.',
+                'no_kk.required'          => 'Nomor KK wajib diisi.',
+                'no_kk.size'              => 'Nomor KK harus 16 digit.',
+                'foto_kk_base64.required' => 'Foto KK wajib diunggah.',
+                'foto_kk_ext.required'    => 'Format foto KK tidak valid.',
+                'foto_kk_ext.in'          => 'Format foto KK harus JPG atau PNG.',
             ]);
 
             // Cek no_kk: tolak jika sudah aktif atau sedang pending
