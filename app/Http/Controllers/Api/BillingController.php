@@ -108,6 +108,43 @@ class BillingController extends Controller
                 'unpaid_billings' => $unpaidBillings,
             ], "Tagihan berhasil diterbitkan");
         } catch (\Exception $e) {
+            // Billing sudah ada bulan ini — kembalikan data billing yang ada
+            // agar petugas tetap bisa lanjut ke halaman pembayaran
+            if (str_contains($e->getMessage(), 'sudah diterbitkan')) {
+                $existingBilling = \App\Models\Billing::where('user_id', $validated['user_id'])
+                    ->where('periode', $validated['periode'])
+                    ->first();
+
+                if ($existingBilling) {
+                    $unpaidBillings = \App\Models\Billing::where('user_id', $validated['user_id'])
+                        ->where('status', 'menunggak')
+                        ->where('id', '!=', $existingBilling->id)
+                        ->orderBy('id', 'asc')
+                        ->get()
+                        ->map(fn($b) => [
+                            'id'            => $b->id,
+                            'periode'       => $b->periode,
+                            'total_tagihan' => (float) $b->totalTagihan,
+                            'status'        => $b->status,
+                        ]);
+
+                    return $this->successResponse([
+                        'new_billing' => [
+                            'id'               => $existingBilling->id,
+                            'periode'          => $existingBilling->periode,
+                            'meteran_lalu'     => $existingBilling->meteranLalu,
+                            'meteran_sekarang' => $existingBilling->meteranSekarang,
+                            'jumlah_pemakaian' => $existingBilling->jumlahPemakaian,
+                            'total_tagihan'    => (float) $existingBilling->totalTagihan,
+                            'foto_meteran'     => $existingBilling->fotoMeteran,
+                            'status'           => $existingBilling->status,
+                        ],
+                        'unpaid_billings' => $unpaidBillings,
+                        'already_exists'  => true,
+                    ], 'Tagihan periode ini sudah ada, lanjutkan ke pembayaran.');
+                }
+            }
+
             return $this->errorResponse($e->getMessage());
         }
     }

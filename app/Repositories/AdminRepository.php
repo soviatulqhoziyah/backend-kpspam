@@ -249,8 +249,28 @@ class AdminRepository
                 ];
             });
 
+        // Tagihan bulan ini yang belum dibayar sama sekali (tidak ada midtrans, belum lunas)
+        $belumLunas = \App\Models\Billing::with('user')
+            ->whereNull('midtrans_order_id')
+            ->where('status', 'menunggak')
+            ->whereMonth('created_at', $month)
+            ->whereYear('created_at', $year)
+            ->get()
+            ->map(function ($bill) {
+                $user = $bill->user ?? null;
+                return [
+                    'nama_pelanggan'   => $user->namaLengkap ?? 'N/A',
+                    'alamat'           => ($user->alamat ?? '') == 'talbar' ? 'Talang Barat' : 'Talang Timur',
+                    'total_pembayaran' => (float) $bill->totalTagihan,
+                    'metode'           => '-',
+                    'status'           => 'BELUM LUNAS',
+                    '_sort'            => $bill->created_at,
+                ];
+            });
+
         $riwayatPembayaran = $completedPayments
             ->concat($pendingMidtrans)
+            ->concat($belumLunas)
             ->sortByDesc('_sort')
             ->values()
             ->map(function ($item) {

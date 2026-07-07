@@ -223,6 +223,7 @@ class PetugasRepository
         $daftar = $billings->map(function ($bill) {
             return [
                 'id'               => $bill->id,
+                'user_id'          => $bill->user_id,
                 'nama_pelanggan'   => $bill->user->namaLengkap,
                 'wilayah'          => $bill->user->alamat === 'talbar' ? 'Talang Barat' : 'Talang Timur',
                 'meteran_lalu'     => (int) $bill->meteranLalu,
